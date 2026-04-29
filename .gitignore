@@ -1,0 +1,31 @@
+# macOS
+.DS_Store
+
+# Xcode — user-specific & build output
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# CocoaPods / Carthage (not used today, but cheap to ignore)
+Pods/
+Carthage/Build/
+
+# XcodeGen — project is generated from project.yml; don't commit the output
+Synced.xcodeproj/
+
+# Editors
+.vscode/
+.idea/
+*.swp
