@@ -1,9 +1,18 @@
 import SwiftUI
 
+private let recentMeals: [String] = [
+    "Chicken, rice, broccoli",
+    "Rice cakes, honey, salt",
+    "Eggs, avocado toast",
+    "Protein shake, banana",
+    "Oats, peanut butter",
+    "Salmon, sweet potato",
+]
+
 struct MealTypeStep: View {
     @Binding var value: String
 
-    @FocusState private var isFocused: Bool
+    @FocusState private var inputFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -18,45 +27,30 @@ struct MealTypeStep: View {
 
             Spacer().frame(height: 8)
 
-            Text("Be specific. This builds your personal trends.")
+            Text("Be specific. This builds your trends.")
                 .font(.synText(15))
                 .foregroundStyle(SYN.textDim)
 
-            Spacer().frame(height: 48)
+            Spacer().frame(height: 24)
 
-            ZStack(alignment: .topLeading) {
-                if value.isEmpty {
-                    Text("e.g. chicken rice broccoli")
-                        .font(.synText(16))
-                        .foregroundStyle(SYN.textFaint)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 24)
-                        .allowsHitTesting(false)
-                }
+            inputField
 
-                TextEditor(text: $value)
-                    .focused($isFocused)
-                    .font(.synText(16))
-                    .foregroundStyle(SYN.text)
-                    .scrollContentBackground(.hidden)
-                    .background(Color.clear)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 16)
-                    .submitLabel(.done)
-            }
-            .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(SYN.surface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(SYN.cyan, lineWidth: 1.5)
-            )
+            Spacer().frame(height: 6)
+
+            charCountRow
+
+            Spacer().frame(height: 24)
+
+            EyebrowText(text: "Recent")
+                .foregroundStyle(SYN.textFaint)
 
             Spacer().frame(height: 12)
 
-            Text("Logged meals build your performance profile over time.")
+            chipScroller
+
+            Spacer().frame(height: 16)
+
+            Text("Synced remembers your meals to spot patterns faster.")
                 .font(.synText(12))
                 .foregroundStyle(SYN.textFaint)
 
@@ -65,8 +59,75 @@ struct MealTypeStep: View {
         .padding(.horizontal, Spacing.pageH)
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                isFocused = true
+                inputFocused = true
             }
         }
+        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: value)
+    }
+
+    // MARK: - Input
+
+    private var inputField: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 14)
+                .fill(SYN.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(SYN.cyan, lineWidth: 1.5)
+                )
+
+            TextField(
+                "",
+                text: $value,
+                prompt: Text("e.g. chicken rice broccoli")
+                    .foregroundStyle(SYN.textFaint),
+                axis: .vertical
+            )
+            .lineLimit(1...3)
+            .focused($inputFocused)
+            .font(.synText(16))
+            .foregroundStyle(SYN.text)
+            .tint(SYN.cyan)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .transaction { $0.animation = nil }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var charCountRow: some View {
+        HStack {
+            Spacer()
+            if value.count > 20 {
+                Text("\(value.count) chars")
+                    .font(.synText(11))
+                    .foregroundStyle(SYN.textFaint)
+            }
+        }
+        .frame(height: 14)
+    }
+
+    // MARK: - Chips
+
+    private var chipScroller: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(recentMeals, id: \.self) { meal in
+                    MealChip(
+                        meal: meal,
+                        isSelected: value == meal,
+                        onTap: { handleChipTap(meal) }
+                    )
+                }
+            }
+            .padding(.horizontal, Spacing.pageH)
+        }
+        .padding(.horizontal, -Spacing.pageH)
+    }
+
+    private func handleChipTap(_ meal: String) {
+        inputFocused = false
+        value = meal
     }
 }
