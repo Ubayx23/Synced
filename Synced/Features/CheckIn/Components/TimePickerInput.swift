@@ -11,7 +11,7 @@ struct TimePickerInput: View {
     @State private var isPM: Bool = false
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 20) {
             HStack(alignment: .center, spacing: 0) {
                 Spacer()
                 column(
@@ -19,18 +19,34 @@ struct TimePickerInput: View {
                     onUp: hourUp,
                     onDown: hourDown
                 )
-                Text(":")
-                    .font(.synMono(72, weight: .bold))
-                    .foregroundStyle(SYN.textDim)
-                    .frame(width: 24)
-                    .offset(y: -8)
+                VStack(spacing: 10) {
+                    Circle()
+                        .fill(SYN.textDim)
+                        .frame(width: 8, height: 8)
+                    Circle()
+                        .fill(SYN.textDim)
+                        .frame(width: 8, height: 8)
+                }
+                .frame(width: 20)
+                .offset(y: -4)
                 column(
-                    value: minute == 0 ? "00" : "30",
-                    onUp: toggleMinute,
-                    onDown: toggleMinute
+                    value: String(format: "%02d", minute),
+                    onUp: minuteUp,
+                    onDown: minuteDown
                 )
                 Spacer()
             }
+            .padding(.vertical, 16)
+            .padding(.horizontal, 24)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(SYN.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(SYN.border, lineWidth: 1)
+            )
 
             amPmToggle
         }
@@ -42,29 +58,32 @@ struct TimePickerInput: View {
 
     @ViewBuilder
     private func column(value: String, onUp: @escaping () -> Void, onDown: @escaping () -> Void) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 4) {
             ChevronButton(systemName: "chevron.up", action: onUp)
             Text(value)
-                .font(.synMono(72, weight: .bold))
+                .font(.system(size: 72, weight: .bold, design: .default))
+                .monospacedDigit()
                 .foregroundStyle(SYN.text)
-                .frame(width: 90)
+                .frame(width: 110)
                 .shadow(color: SYN.cyan.opacity(0.12), radius: 16)
+                .transaction { $0.animation = nil }
             ChevronButton(systemName: "chevron.down", action: onDown)
         }
     }
 
     private var amPmToggle: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 6) {
             segment(label: "AM", active: !isPM) { setIsPM(false) }
             segment(label: "PM", active: isPM)  { setIsPM(true) }
         }
-        .frame(width: 120, height: 36)
+        .padding(4)
+        .frame(width: 160, height: 44)
         .background(
-            RoundedRectangle(cornerRadius: 20)
+            RoundedRectangle(cornerRadius: 22)
                 .fill(SYN.surface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 20)
+            RoundedRectangle(cornerRadius: 22)
                 .stroke(SYN.border, lineWidth: 1)
         )
     }
@@ -73,17 +92,14 @@ struct TimePickerInput: View {
     private func segment(label: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(.synText(15, weight: active ? .semibold : .regular))
-                .foregroundStyle(active ? SYN.text : SYN.textDim)
+                .font(.synText(15, weight: .semibold))
+                .foregroundStyle(active ? Color.black : SYN.textFaint)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(active ? SYN.surfaceHi : Color.clear)
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(active ? SYN.cyan : Color.clear)
                 )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20)
-                        .stroke(active ? SYN.cyan : .clear, lineWidth: 1)
-                )
+                .shadow(color: active ? SYN.cyan.opacity(0.4) : .clear, radius: 8)
         }
         .buttonStyle(.plain)
     }
@@ -91,23 +107,22 @@ struct TimePickerInput: View {
     // MARK: - Actions (mutate state, then write back)
 
     private func hourUp() {
-        withAnimation(.spring(response: 0.2)) {
-            hour = hour >= 12 ? 1 : hour + 1
-        }
+        hour = hour >= 12 ? 1 : hour + 1
         writeBack()
     }
 
     private func hourDown() {
-        withAnimation(.spring(response: 0.2)) {
-            hour = hour <= 1 ? 12 : hour - 1
-        }
+        hour = hour <= 1 ? 12 : hour - 1
         writeBack()
     }
 
-    private func toggleMinute() {
-        withAnimation(.spring(response: 0.2)) {
-            minute = minute == 0 ? 30 : 0
-        }
+    private func minuteUp() {
+        minute = minute >= 59 ? 0 : minute + 1
+        writeBack()
+    }
+
+    private func minuteDown() {
+        minute = minute <= 0 ? 59 : minute - 1
         writeBack()
     }
 
@@ -125,8 +140,7 @@ struct TimePickerInput: View {
         isPM = h24 >= 12
         let h12 = h24 % 12 == 0 ? 12 : h24 % 12
         hour = h12
-        let rawMinute = comps.minute ?? 0
-        minute = rawMinute >= 15 ? 30 : 0
+        minute = comps.minute ?? 0
         if writeBack { self.writeBack() }
     }
 
@@ -161,10 +175,12 @@ private struct ChevronButton: View {
 
     var body: some View {
         Button {
-            withAnimation(.spring(response: 0.15)) { isPressed = true }
+            // Mutate number outside any animated transaction so the digit
+            // updates instantly without a crossfade ghost behind it.
             action()
+            isPressed = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                withAnimation(.spring(response: 0.25)) { isPressed = false }
+                isPressed = false
             }
         } label: {
             Image(systemName: systemName)
@@ -172,6 +188,7 @@ private struct ChevronButton: View {
                 .foregroundStyle(SYN.textDim)
                 .frame(width: 44, height: 44)
                 .scaleEffect(isPressed ? 0.85 : 1.0)
+                .animation(.spring(response: 0.2), value: isPressed)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
