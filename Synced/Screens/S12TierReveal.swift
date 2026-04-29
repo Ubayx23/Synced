@@ -10,7 +10,7 @@ struct S12TierReveal: View {
     private var tier: Tier { model.resolvedTier }
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s12, onBack: onBack, ambient: false) {
+        ScreenShell(progress: ScreenProgress.s12, onBack: onBack) {
             VStack(spacing: 0) {
                 Spacer().frame(height: 12)
 
@@ -50,15 +50,7 @@ struct S12TierReveal: View {
 
                 Spacer()
             }
-            .background(
-                RadialGradient(
-                    colors: [tier.color.opacity(0.22), tier.color.opacity(0.06), .clear],
-                    center: UnitPoint(x: 0.5, y: 0.30),
-                    startRadius: 0, endRadius: 420
-                )
-                .blendMode(.plusLighter)
-                .allowsHitTesting(false)
-            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } cta: {
             PrimaryButton(title: "Enter Synced", action: onNext)
         }
@@ -100,12 +92,13 @@ struct S12TierReveal: View {
                 .shadow(color: tier.color.opacity(0.6), radius: 6)
 
             Text(tier.tagline)
-                .font(.synText(15))
+                .font(.synText(14))
                 .foregroundStyle(SYN.text)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 16)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .fixedSize(horizontal: false, vertical: true)
         .background(
             RoundedRectangle(cornerRadius: Radius.card)
                 .fill(LinearGradient(colors: [Color(hex: 0x1A1A1E), Color(hex: 0x131316)],

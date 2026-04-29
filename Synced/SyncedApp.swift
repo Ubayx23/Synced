@@ -4,8 +4,7 @@ import SwiftUI
 struct SyncedApp: App {
     var body: some Scene {
         WindowGroup {
-            OnboardingFlow()
-                .preferredColorScheme(.dark)
+            RootView()
                 .statusBarHidden(false)
         }
     }

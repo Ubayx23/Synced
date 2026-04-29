@@ -65,7 +65,13 @@ struct OnboardingFlow: View {
         }
     }
 
-    private func next()    { step = min(13, step + 1) }
+    private func next() {
+        // Finishing the tier reveal flips the persistent flag — RootView swaps to MainTabView.
+        if step == 12 {
+            UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+        }
+        step = min(13, step + 1)
+    }
     private func back()    { step = max(1, step - 1) }
     private func restart() {
         model.reset()

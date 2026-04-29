@@ -7,7 +7,7 @@ struct S5Hook: View {
     @State private var phase = 0
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s5, onBack: onBack, ambient: false) {
+        ScreenShell(progress: ScreenProgress.s5, onBack: onBack) {
             VStack(spacing: 0) {
                 Spacer().frame(height: 24)
 
@@ -41,15 +41,7 @@ struct S5Hook: View {
 
                 Spacer()
             }
-            .background(
-                RadialGradient(
-                    colors: [SYN.cyan.opacity(0.22), SYN.cyan.opacity(0.06), .clear],
-                    center: UnitPoint(x: 0.5, y: 0.32),
-                    startRadius: 0, endRadius: 420
-                )
-                .allowsHitTesting(false)
-                .blendMode(.plusLighter)
-            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } cta: {
             PrimaryButton(title: "Tell me how", action: onNext)
         }

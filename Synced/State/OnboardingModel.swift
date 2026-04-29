@@ -56,11 +56,22 @@ enum Tier: String, CaseIterable, Identifiable {
 
     var range: ClosedRange<Int> {
         switch self {
-        case .cooked:   return 0...19
-        case .active:   return 20...49
-        case .dialed:   return 50...79
-        case .lockedIn: return 80...94
-        case .synced:   return 95...100
+        case .cooked:   return 0...39
+        case .active:   return 40...59
+        case .dialed:   return 60...74
+        case .lockedIn: return 75...89
+        case .synced:   return 90...100
+        }
+    }
+
+    /// Tier above this one, or `nil` if already at the top.
+    var next: Tier? {
+        switch self {
+        case .cooked:   return .active
+        case .active:   return .dialed
+        case .dialed:   return .lockedIn
+        case .lockedIn: return .synced
+        case .synced:   return nil
         }
     }
 
