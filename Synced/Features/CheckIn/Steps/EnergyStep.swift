@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct EnergyLevelStep: View {
-    @Binding var value: Double
+struct EnergyStep: View {
+    @Binding var energyLevel: Double
 
     private static let labels: [Int: String] = [
         1:  "Running on empty",
@@ -16,7 +16,7 @@ struct EnergyLevelStep: View {
         10: "Best day ever",
     ]
 
-    private var intValue: Int { Int(value) }
+    private var intValue: Int { Int(energyLevel) }
 
     private var levelColor: Color {
         switch intValue {
@@ -30,28 +30,28 @@ struct EnergyLevelStep: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            EyebrowText(text: "Step 5 of 5")
+            EyebrowText(text: "Step 3 of 3")
                 .foregroundStyle(SYN.textFaint)
 
             Spacer().frame(height: 24)
 
-            Text("How's your energy right now?")
+            Text("How's your energy?")
                 .font(.synDisplay(28, weight: .bold))
                 .foregroundStyle(SYN.text)
 
             Spacer().frame(height: 8)
 
-            Text("Before you walk in")
+            Text("Right now, before you walk in.")
                 .font(.synText(15))
                 .foregroundStyle(SYN.textDim)
 
-            Spacer().frame(height: 80)
+            Spacer()
 
             VStack(spacing: 8) {
                 Text("\(intValue)")
-                    .font(.synMono(96, weight: .bold))
+                    .font(.synDisplay(96, weight: .bold))
                     .foregroundStyle(levelColor)
-                    .shadow(color: intValue == 10 ? SYN.cyan.opacity(0.5) : .clear, radius: 24)
+                    .shadow(color: intValue == 10 ? SYN.cyan.opacity(0.20) : .clear, radius: 24)
 
                 Text(Self.labels[intValue] ?? "")
                     .font(.synDisplay(17, weight: .semibold))
@@ -59,9 +59,9 @@ struct EnergyLevelStep: View {
             }
             .frame(maxWidth: .infinity)
 
-            Spacer().frame(height: 48)
+            Spacer()
 
-            Slider(value: $value, in: 1.0...10.0, step: 1)
+            Slider(value: $energyLevel, in: 1.0...10.0, step: 1)
                 .tint(SYN.cyan)
                 .padding(.horizontal, 24)
 
@@ -76,7 +76,7 @@ struct EnergyLevelStep: View {
             .foregroundStyle(SYN.textFaint)
             .padding(.horizontal, 24)
 
-            Spacer()
+            Color.clear.frame(height: 32)
         }
         .padding(.horizontal, Spacing.pageH)
     }
