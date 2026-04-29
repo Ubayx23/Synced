@@ -8,6 +8,7 @@ struct PreLiftCheckInView: View {
     @State private var sleepHours: Double = 7.5
     @State private var sleepQuality: Int = 0
     @State private var mealType: String = ""
+    @State private var mealTime: Date = Calendar.current.date(byAdding: .hour, value: -2, to: Date()) ?? Date()
     @State private var mealTiming: String = ""
     @State private var energyLevel: Double = 5.0
 
@@ -32,22 +33,7 @@ struct PreLiftCheckInView: View {
                     .padding(.bottom, 48)
             }
         }
-        .onChange(of: mealType) { _, new in
-            if new == "Nothing yet" {
-                mealTiming = "Haven't eaten"
-            } else if mealTiming == "Haven't eaten" {
-                // User went back and switched away from "Nothing yet" — clear auto value.
-                mealTiming = ""
-            }
-        }
         .onChange(of: currentStep) { _, new in
-            if new == 4, mealType == "Nothing yet" {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    if currentStep == 4, mealType == "Nothing yet" {
-                        withAnimation(.easeInOut(duration: 0.25)) { currentStep = 5 }
-                    }
-                }
-            }
             if new == 5 {
                 ctaPulse = 0.96
                 withAnimation(.spring(response: 0.45, dampingFraction: 0.6).delay(0.05)) {
@@ -99,7 +85,7 @@ struct PreLiftCheckInView: View {
                 case 1: SleepHoursStep(value: $sleepHours)
                 case 2: SleepQualityStep(value: $sleepQuality)
                 case 3: MealTypeStep(value: $mealType)
-                case 4: MealTimingStep(value: $mealTiming, mealType: mealType)
+                case 4: MealTimingStep(mealTime: $mealTime)
                 default: EnergyLevelStep(value: $energyLevel)
                 }
             }
@@ -122,8 +108,8 @@ struct PreLiftCheckInView: View {
         switch currentStep {
         case 1: return true
         case 2: return sleepQuality != 0
-        case 3: return !mealType.isEmpty
-        case 4: return !mealTiming.isEmpty
+        case 3: return !mealType.trimmingCharacters(in: .whitespaces).isEmpty
+        case 4: return mealTime <= Date()
         default: return true
         }
     }
@@ -137,6 +123,9 @@ struct PreLiftCheckInView: View {
     }
 
     private func advance() {
+        if currentStep == 4 {
+            mealTiming = MealTimingStep.formatted(mealTime)
+        }
         if currentStep == 5 {
             handleComplete()
         } else {
