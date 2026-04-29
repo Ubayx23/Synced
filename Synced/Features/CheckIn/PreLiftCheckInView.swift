@@ -8,7 +8,7 @@ struct PreLiftCheckInView: View {
     @State private var muscleGroups: [String] = []
     @State private var lastTrainedGap: String = ""
     @State private var sleepHours: Double = 7.5
-    @State private var mealItems: [String] = []
+    @State private var mealItems: [FoodItem] = []
     @State private var mealTime: Date = Calendar.current.date(byAdding: .hour, value: -2, to: Date()) ?? Date()
     @State private var liftTime: Date = Date()
     @State private var hydration: String = ""
@@ -46,16 +46,25 @@ struct PreLiftCheckInView: View {
                     ctaPulse = 1.0
                 }
             }
-            saveDraft()
         }
-        .onChange(of: muscleGroups)   { _, _ in saveDraft() }
-        .onChange(of: lastTrainedGap) { _, _ in saveDraft() }
-        .onChange(of: sleepHours)     { _, _ in saveDraft() }
-        .onChange(of: mealItems)      { _, _ in saveDraft() }
-        .onChange(of: mealTime)       { _, _ in saveDraft() }
-        .onChange(of: liftTime)       { _, _ in saveDraft() }
-        .onChange(of: hydration)      { _, _ in saveDraft() }
-        .onChange(of: preWorkout)     { _, _ in saveDraft() }
+        .onChange(of: draftSnapshot) { _, _ in saveDraft() }
+    }
+
+    /// Single hash representing the entire saveable state. Combining all
+    /// observed fields into one `.onChange` keeps the body type-checker fast
+    /// (the long chain of nine onChanges previously timed out the compiler).
+    private var draftSnapshot: Int {
+        var hasher = Hasher()
+        hasher.combine(currentStep)
+        hasher.combine(muscleGroups)
+        hasher.combine(lastTrainedGap)
+        hasher.combine(sleepHours)
+        hasher.combine(mealItems)
+        hasher.combine(mealTime)
+        hasher.combine(liftTime)
+        hasher.combine(hydration)
+        hasher.combine(preWorkout)
+        return hasher.finalize()
     }
 
     // MARK: - Top bar
@@ -198,7 +207,7 @@ private struct PreLiftDraft: Codable {
     var muscleGroups: [String]
     var lastTrainedGap: String
     var sleepHours: Double
-    var mealItems: [String]
+    var mealItems: [FoodItem]
     var mealTime: Date
     var liftTime: Date
     var hydration: String
@@ -208,7 +217,7 @@ private struct PreLiftDraft: Codable {
 
 private enum PreLiftDraftStore {
     // Bumped on each schema/flow change so older drafts are silently ignored.
-    static let key = "preLiftDraft.v4"
+    static let key = "preLiftDraft.v5"
 
     /// Drafts written by an older schema fail to decode; we treat that as
     /// "no draft" and let the user start fresh.
