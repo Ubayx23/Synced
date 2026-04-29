@@ -12,6 +12,7 @@ struct HomeView: View {
     @State private var preLiftDone: Bool = false
     @State private var postLiftDone: Bool = false
     @State private var showingPreLift: Bool = false
+    @State private var showingPostLift: Bool = false
 
     var body: some View {
         ZStack {
@@ -47,11 +48,24 @@ struct HomeView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
         }
+        .sheet(isPresented: $showingPostLift) {
+            PostLiftCheckInView(isComplete: $postLiftDone)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+        }
         .onChange(of: preLiftDone) { _, new in
             guard new else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
                     displayScore = 71
+                }
+            }
+        }
+        .onChange(of: postLiftDone) { _, new in
+            guard new else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                    displayScore = 78
                 }
             }
         }
@@ -179,7 +193,7 @@ struct HomeView: View {
                     title: "Post-lift check-in",
                     subtitle: "Session feel, performance",
                     state: postLiftState,
-                    onStart: { /* future: post-lift sheet */ }
+                    onStart: { showingPostLift = true }
                 )
             }
         }
