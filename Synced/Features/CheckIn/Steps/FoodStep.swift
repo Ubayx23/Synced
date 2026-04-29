@@ -10,16 +10,14 @@ private let recentMeals: [String] = [
 ]
 
 struct FoodStep: View {
-    @Binding var mealType: String
+    @Binding var mealItems: [String]
     @Binding var mealTime: Date
     @Binding var liftTime: Date
-
-    @FocusState private var inputFocused: Bool
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                EyebrowText(text: "Step 2 of 3")
+                EyebrowText(text: "Step 2 of 2")
                     .foregroundStyle(SYN.textFaint)
 
                 Spacer().frame(height: 24)
@@ -34,15 +32,15 @@ struct FoodStep: View {
                     .font(.synText(15))
                     .foregroundStyle(SYN.textDim)
 
-                Spacer().frame(height: 24)
+                Spacer().frame(height: 32)
 
                 mealSection
 
-                Spacer().frame(height: 24)
+                Spacer().frame(height: 32)
 
                 divider
 
-                Spacer().frame(height: 24)
+                Spacer().frame(height: 32)
 
                 mealTimeSection
 
@@ -54,9 +52,9 @@ struct FoodStep: View {
 
                 liftTimeSection
 
-                Spacer().frame(height: 16)
+                Spacer().frame(height: 20)
 
-                gapLabel
+                gapBlock
                     .frame(maxWidth: .infinity)
 
                 Color.clear.frame(height: 32)
@@ -74,40 +72,18 @@ struct FoodStep: View {
 
             Spacer().frame(height: 8)
 
-            inputField
+            MealTagInput(items: $mealItems)
+
+            Spacer().frame(height: 12)
+
+            chipScroller
 
             Spacer().frame(height: 8)
 
-            chipScroller
+            Text("Each food tracked separately for better trends.")
+                .font(.synText(12))
+                .foregroundStyle(SYN.textFaint)
         }
-    }
-
-    private var inputField: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 14)
-                .fill(SYN.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(SYN.cyan, lineWidth: 1.5)
-                )
-
-            TextField(
-                "",
-                text: $mealType,
-                prompt: Text("e.g. chicken rice broccoli")
-                    .foregroundStyle(SYN.textFaint),
-                axis: .vertical
-            )
-            .lineLimit(1...3)
-            .focused($inputFocused)
-            .font(.synText(16))
-            .foregroundStyle(SYN.text)
-            .tint(SYN.cyan)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .transaction { $0.animation = nil }
-        }
-        .frame(maxWidth: .infinity)
     }
 
     private var chipScroller: some View {
@@ -116,17 +92,34 @@ struct FoodStep: View {
                 ForEach(recentMeals, id: \.self) { meal in
                     MealChip(
                         meal: meal,
-                        isSelected: mealType == meal,
-                        onTap: {
-                            inputFocused = false
-                            mealType = meal
-                        }
+                        isSelected: false,
+                        onTap: { handleChipTap(meal) }
                     )
                 }
             }
             .padding(.horizontal, Spacing.pageH)
         }
         .padding(.horizontal, -Spacing.pageH)
+    }
+
+    private func handleChipTap(_ meal: String) {
+        let parts = meal
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        let existing = Set(mealItems.map { $0.lowercased() })
+        var toAdd: [String] = []
+        for part in parts where !existing.contains(part.lowercased()) {
+            // Also dedupe within this single tap if the chip somehow has repeats.
+            if !toAdd.contains(where: { $0.lowercased() == part.lowercased() }) {
+                toAdd.append(part)
+            }
+        }
+        guard !toAdd.isEmpty else { return }
+        withAnimation(.spring(response: 0.25)) {
+            mealItems.append(contentsOf: toAdd)
+        }
     }
 
     // MARK: - Meal time
@@ -149,9 +142,9 @@ struct FoodStep: View {
             EyebrowText(text: "What time are you lifting?")
                 .foregroundStyle(SYN.textFaint)
 
-            Spacer().frame(height: 8)
+            Spacer().frame(height: 4)
 
-            Text("We'll track which times you perform best.")
+            Text("We'll track when you perform best.")
                 .font(.synText(13))
                 .foregroundStyle(SYN.textFaint)
 
@@ -161,43 +154,43 @@ struct FoodStep: View {
         }
     }
 
-    // MARK: - Gap label
+    // MARK: - Gap
 
     @ViewBuilder
-    private var gapLabel: some View {
+    private var gapBlock: some View {
         if liftTime <= mealTime {
-            Text("Lift time must be after meal time")
+            Text("Set lift time after meal time")
                 .font(.synText(13))
                 .foregroundStyle(SYN.red)
         } else {
-            let interval = Int(liftTime.timeIntervalSince(mealTime) / 60)
-            let hours = interval / 60
-            let mins = interval % 60
+            let totalMins = Int(liftTime.timeIntervalSince(mealTime) / 60)
+            let hours = totalMins / 60
+            let mins = totalMins % 60
 
             VStack(spacing: 4) {
                 Text(gapPhrase(hours: hours, mins: mins))
-                    .font(.synText(13))
+                    .font(.system(size: 14, design: .monospaced))
                     .foregroundStyle(SYN.textDim)
 
-                Text(contextLabel(forMinutes: interval).text)
-                    .font(.synText(13))
-                    .foregroundStyle(contextLabel(forMinutes: interval).color)
+                Text(contextLabel(forMinutes: totalMins).text)
+                    .font(.synText(14, weight: .medium))
+                    .foregroundStyle(contextLabel(forMinutes: totalMins).color)
             }
         }
     }
 
     private func gapPhrase(hours: Int, mins: Int) -> String {
-        if hours > 0 && mins > 0 { return "That's \(hours) hr \(mins) min gap" }
-        if hours > 0 { return "That's \(hours) hr gap" }
-        return "That's \(mins) min gap"
+        if hours > 0 && mins > 0 { return "\(hours)hr \(mins)min gap" }
+        if hours > 0 { return "\(hours)hr gap" }
+        return "\(mins)min gap"
     }
 
     private func contextLabel(forMinutes total: Int) -> (text: String, color: Color) {
         switch total {
-        case ..<60:    return ("Still digesting, may affect your lift", SYN.amber)
-        case 60..<90:  return ("Getting there",                          SYN.textDim)
-        case 90..<180: return ("Sweet spot",                              SYN.cyan)
-        default:       return ("Fully digested",                          SYN.green)
+        case ..<60:    return ("Still digesting",  SYN.amber)
+        case 60...90:  return ("Getting there",     SYN.textDim)
+        case 91...180: return ("Sweet spot",        SYN.cyan)
+        default:       return ("Fully digested",    SYN.green)
         }
     }
 

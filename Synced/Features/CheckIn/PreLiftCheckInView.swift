@@ -6,16 +6,14 @@ struct PreLiftCheckInView: View {
 
     @State private var currentStep: Int = 1
     @State private var sleepHours: Double = 7.5
-    @State private var sleepQuality: Int = 0
-    @State private var mealType: String = ""
+    @State private var mealItems: [String] = []
     @State private var mealTime: Date = Calendar.current.date(byAdding: .hour, value: -2, to: Date()) ?? Date()
     @State private var liftTime: Date = Date()
-    @State private var energyLevel: Double = 5.0
 
     @State private var ctaPulse: Double = 1.0
     @State private var draftLoaded: Bool = false
 
-    private let totalSteps = 3
+    private let totalSteps = 2
 
     var body: some View {
         ZStack {
@@ -46,12 +44,10 @@ struct PreLiftCheckInView: View {
             }
             saveDraft()
         }
-        .onChange(of: sleepHours)   { _, _ in saveDraft() }
-        .onChange(of: sleepQuality) { _, _ in saveDraft() }
-        .onChange(of: mealType)     { _, _ in saveDraft() }
-        .onChange(of: mealTime)     { _, _ in saveDraft() }
-        .onChange(of: liftTime)     { _, _ in saveDraft() }
-        .onChange(of: energyLevel)  { _, _ in saveDraft() }
+        .onChange(of: sleepHours) { _, _ in saveDraft() }
+        .onChange(of: mealItems)  { _, _ in saveDraft() }
+        .onChange(of: mealTime)   { _, _ in saveDraft() }
+        .onChange(of: liftTime)   { _, _ in saveDraft() }
     }
 
     // MARK: - Top bar
@@ -93,9 +89,8 @@ struct PreLiftCheckInView: View {
         ZStack {
             Group {
                 switch currentStep {
-                case 1: SleepStep(sleepHours: $sleepHours, sleepQuality: $sleepQuality)
-                case 2: FoodStep(mealType: $mealType, mealTime: $mealTime, liftTime: $liftTime)
-                default: EnergyStep(energyLevel: $energyLevel)
+                case 1: SleepStep(sleepHours: $sleepHours)
+                default: FoodStep(mealItems: $mealItems, mealTime: $mealTime, liftTime: $liftTime)
                 }
             }
             .id(currentStep)
@@ -115,9 +110,8 @@ struct PreLiftCheckInView: View {
 
     private var canAdvance: Bool {
         switch currentStep {
-        case 1: return sleepQuality != 0
-        case 2: return !mealType.trimmingCharacters(in: .whitespaces).isEmpty && liftTime > mealTime
-        default: return true
+        case 1: return true
+        default: return !mealItems.isEmpty && liftTime > mealTime
         }
     }
 
@@ -152,13 +146,11 @@ struct PreLiftCheckInView: View {
             PreLiftDraftStore.clear()
             return
         }
-        currentStep  = min(max(draft.currentStep, 1), totalSteps)
-        sleepHours   = draft.sleepHours
-        sleepQuality = draft.sleepQuality
-        mealType     = draft.mealType
-        mealTime     = draft.mealTime
-        liftTime     = draft.liftTime
-        energyLevel  = draft.energyLevel
+        currentStep = min(max(draft.currentStep, 1), totalSteps)
+        sleepHours  = draft.sleepHours
+        mealItems   = draft.mealItems
+        mealTime    = draft.mealTime
+        liftTime    = draft.liftTime
     }
 
     private func saveDraft() {
@@ -167,11 +159,9 @@ struct PreLiftCheckInView: View {
             PreLiftDraft(
                 currentStep: currentStep,
                 sleepHours: sleepHours,
-                sleepQuality: sleepQuality,
-                mealType: mealType,
+                mealItems: mealItems,
                 mealTime: mealTime,
                 liftTime: liftTime,
-                energyLevel: energyLevel,
                 savedAt: Date()
             )
         )
@@ -183,20 +173,17 @@ struct PreLiftCheckInView: View {
 private struct PreLiftDraft: Codable {
     var currentStep: Int
     var sleepHours: Double
-    var sleepQuality: Int
-    var mealType: String
+    var mealItems: [String]
     var mealTime: Date
     var liftTime: Date
-    var energyLevel: Double
     var savedAt: Date
 }
 
 private enum PreLiftDraftStore {
     static let key = "preLiftDraft"
 
-    /// Drafts written by the previous 5-step schema have no `liftTime` and will
-    /// fail to decode here — we silently treat that as "no draft" and let the
-    /// user start fresh.
+    /// Drafts written by an older schema fail to decode; we treat that as
+    /// "no draft" and let the user start fresh.
     static func load() -> PreLiftDraft? {
         guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(PreLiftDraft.self, from: data)
