@@ -13,6 +13,7 @@ struct HomeView: View {
     @State private var postLiftDone: Bool = false
     @State private var showingPreLift: Bool = false
     @State private var showingPostLift: Bool = false
+    @State private var showingProfile: Bool = false
 
     var body: some View {
         ZStack {
@@ -53,6 +54,11 @@ struct HomeView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
         }
+        .sheet(isPresented: $showingProfile) {
+            ProfileView()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
         .onChange(of: preLiftDone) { _, new in
             guard new else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -86,16 +92,27 @@ struct HomeView: View {
 
             Spacer()
 
-            HStack(spacing: 6) {
-                Image(systemName: "flame.fill")
-                    .font(.system(size: 16))
-                    .foregroundStyle(SYN.amber)
-                Text("\(mockStreak)")
-                    .font(.synMono(16, weight: .bold))
-                    .foregroundStyle(SYN.text)
-                Text("day streak")
-                    .font(.synText(12))
-                    .foregroundStyle(SYN.textDim)
+            HStack(spacing: 16) {
+                HStack(spacing: 6) {
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(SYN.amber)
+                    Text("\(mockStreak)")
+                        .font(.synMono(16, weight: .bold))
+                        .foregroundStyle(SYN.text)
+                    Text("day streak")
+                        .font(.synText(12))
+                        .foregroundStyle(SYN.textDim)
+                }
+
+                Button(action: { showingProfile = true }) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(SYN.textDim)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -211,7 +228,7 @@ struct HomeView: View {
         HStack(spacing: 8) {
             StatPill(value: String(format: "%.1f", mockSleepHours), label: "hrs sleep")
             StatPill(value: "\(mockDaysPerWeek)",                   label: "days/week")
-            StatPill(value: "\(mockStreak)",                        label: "day streak")
+            LastSessionPill(rating: postLiftDone ? 4 : nil)
         }
     }
 }
@@ -285,6 +302,52 @@ private struct CheckInCard: View {
 }
 
 // MARK: - Stat pill
+
+private struct LastSessionPill: View {
+    let rating: Int?
+
+    var body: some View {
+        VStack(spacing: 4) {
+            if let rating {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(colorForRating(rating))
+                        .frame(width: 8, height: 8)
+                    Text("\(rating)")
+                        .font(.synMono(20, weight: .bold))
+                        .foregroundStyle(SYN.text)
+                }
+            } else {
+                Text("--")
+                    .font(.synMono(20, weight: .bold))
+                    .foregroundStyle(SYN.textFaint)
+            }
+            Text("last session")
+                .font(.synText(11))
+                .foregroundStyle(SYN.textDim)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(SYN.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(SYN.border, lineWidth: 1)
+        )
+    }
+
+    private func colorForRating(_ n: Int) -> Color {
+        switch n {
+        case 1: return SYN.red
+        case 2: return SYN.amber
+        case 3: return SYN.text
+        case 4: return SYN.green
+        default: return SYN.cyan
+        }
+    }
+}
 
 private struct StatPill: View {
     let value: String

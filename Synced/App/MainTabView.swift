@@ -48,8 +48,8 @@ struct MainTabView: View {
             LeaderboardView()
                 .tabItem { Label("Leaderboard", systemImage: "trophy.fill") }
 
-            ProfileView()
-                .tabItem { Label("Profile", systemImage: "person.fill") }
+            StatsView()
+                .tabItem { Label("Stats", systemImage: "chart.line.uptrend.xyaxis") }
         }
         .tint(SYN.cyan)
         .preferredColorScheme(.dark)

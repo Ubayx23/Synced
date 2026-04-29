@@ -12,6 +12,7 @@ private let mockWeeksTracked    = 3
 
 struct ProfileView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ZStack {
@@ -19,8 +20,11 @@ struct ProfileView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
+                    closeRow
+                        .padding(.top, 8)
+
                     profileHeaderCard
-                        .padding(.top, 16)
+                        .padding(.top, 8)
 
                     Spacer().frame(height: 24)
                     EyebrowText(text: "Your stats").foregroundStyle(SYN.textFaint)
@@ -42,6 +46,22 @@ struct ProfileView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, Spacing.pageH)
             }
+        }
+    }
+
+    // MARK: - Close row
+
+    private var closeRow: some View {
+        HStack {
+            Spacer()
+            Button(action: { dismiss() }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(SYN.textFaint)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
     }
 
