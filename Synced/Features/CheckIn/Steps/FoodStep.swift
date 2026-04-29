@@ -14,7 +14,7 @@ struct FoodStep: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            EyebrowText(text: "Step 2 of 3")
+            EyebrowText(text: "Step 3 of 4")
                 .foregroundStyle(SYN.textFaint)
 
             Spacer().frame(height: 24)

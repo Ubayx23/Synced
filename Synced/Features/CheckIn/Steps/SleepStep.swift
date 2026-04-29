@@ -5,7 +5,7 @@ struct SleepStep: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            EyebrowText(text: "Step 1 of 2")
+            EyebrowText(text: "Step 2 of 4")
                 .foregroundStyle(SYN.textFaint)
 
             Spacer().frame(height: 24)
@@ -16,7 +16,7 @@ struct SleepStep: View {
 
             Spacer().frame(height: 8)
 
-            Text("Last night's hours drive your score.")
+            Text("Last night's hours directly affect your output.")
                 .font(.synText(15))
                 .foregroundStyle(SYN.textDim)
 

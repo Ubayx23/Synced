@@ -5,15 +5,19 @@ struct PreLiftCheckInView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var currentStep: Int = 1
+    @State private var muscleGroups: [String] = []
+    @State private var lastTrainedGap: String = ""
     @State private var sleepHours: Double = 7.5
     @State private var mealItems: [String] = []
     @State private var mealTime: Date = Calendar.current.date(byAdding: .hour, value: -2, to: Date()) ?? Date()
     @State private var liftTime: Date = Date()
+    @State private var hydration: String = ""
+    @State private var preWorkout: String = ""
 
     @State private var ctaPulse: Double = 1.0
     @State private var draftLoaded: Bool = false
 
-    private let totalSteps = 3
+    private let totalSteps = 4
 
     var body: some View {
         ZStack {
@@ -44,10 +48,14 @@ struct PreLiftCheckInView: View {
             }
             saveDraft()
         }
-        .onChange(of: sleepHours) { _, _ in saveDraft() }
-        .onChange(of: mealItems)  { _, _ in saveDraft() }
-        .onChange(of: mealTime)   { _, _ in saveDraft() }
-        .onChange(of: liftTime)   { _, _ in saveDraft() }
+        .onChange(of: muscleGroups)   { _, _ in saveDraft() }
+        .onChange(of: lastTrainedGap) { _, _ in saveDraft() }
+        .onChange(of: sleepHours)     { _, _ in saveDraft() }
+        .onChange(of: mealItems)      { _, _ in saveDraft() }
+        .onChange(of: mealTime)       { _, _ in saveDraft() }
+        .onChange(of: liftTime)       { _, _ in saveDraft() }
+        .onChange(of: hydration)      { _, _ in saveDraft() }
+        .onChange(of: preWorkout)     { _, _ in saveDraft() }
     }
 
     // MARK: - Top bar
@@ -89,9 +97,13 @@ struct PreLiftCheckInView: View {
         ZStack {
             Group {
                 switch currentStep {
-                case 1: SleepStep(sleepHours: $sleepHours)
-                case 2: FoodStep(mealItems: $mealItems)
-                default: TimingStep(mealTime: $mealTime, liftTime: $liftTime)
+                case 1: RecoveryStep(muscleGroups: $muscleGroups, lastTrainedGap: $lastTrainedGap)
+                case 2: SleepStep(sleepHours: $sleepHours)
+                case 3: FoodStep(mealItems: $mealItems)
+                default: TimingStep(mealTime: $mealTime,
+                                    liftTime: $liftTime,
+                                    hydration: $hydration,
+                                    preWorkout: $preWorkout)
                 }
             }
             .id(currentStep)
@@ -111,9 +123,10 @@ struct PreLiftCheckInView: View {
 
     private var canAdvance: Bool {
         switch currentStep {
-        case 1: return true
-        case 2: return !mealItems.isEmpty
-        default: return liftTime > mealTime
+        case 1: return !muscleGroups.isEmpty && !lastTrainedGap.isEmpty
+        case 2: return true
+        case 3: return !mealItems.isEmpty
+        default: return liftTime > mealTime && !hydration.isEmpty && !preWorkout.isEmpty
         }
     }
 
@@ -148,11 +161,15 @@ struct PreLiftCheckInView: View {
             PreLiftDraftStore.clear()
             return
         }
-        currentStep = min(max(draft.currentStep, 1), totalSteps)
-        sleepHours  = draft.sleepHours
-        mealItems   = draft.mealItems
-        mealTime    = draft.mealTime
-        liftTime    = draft.liftTime
+        currentStep    = min(max(draft.currentStep, 1), totalSteps)
+        muscleGroups   = draft.muscleGroups
+        lastTrainedGap = draft.lastTrainedGap
+        sleepHours     = draft.sleepHours
+        mealItems      = draft.mealItems
+        mealTime       = draft.mealTime
+        liftTime       = draft.liftTime
+        hydration      = draft.hydration
+        preWorkout     = draft.preWorkout
     }
 
     private func saveDraft() {
@@ -160,10 +177,14 @@ struct PreLiftCheckInView: View {
         PreLiftDraftStore.save(
             PreLiftDraft(
                 currentStep: currentStep,
+                muscleGroups: muscleGroups,
+                lastTrainedGap: lastTrainedGap,
                 sleepHours: sleepHours,
                 mealItems: mealItems,
                 mealTime: mealTime,
                 liftTime: liftTime,
+                hydration: hydration,
+                preWorkout: preWorkout,
                 savedAt: Date()
             )
         )
@@ -174,16 +195,20 @@ struct PreLiftCheckInView: View {
 
 private struct PreLiftDraft: Codable {
     var currentStep: Int
+    var muscleGroups: [String]
+    var lastTrainedGap: String
     var sleepHours: Double
     var mealItems: [String]
     var mealTime: Date
     var liftTime: Date
+    var hydration: String
+    var preWorkout: String
     var savedAt: Date
 }
 
 private enum PreLiftDraftStore {
     // Bumped on each schema/flow change so older drafts are silently ignored.
-    static let key = "preLiftDraft.v3"
+    static let key = "preLiftDraft.v4"
 
     /// Drafts written by an older schema fail to decode; we treat that as
     /// "no draft" and let the user start fresh.
