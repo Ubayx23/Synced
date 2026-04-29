@@ -15,23 +15,30 @@ struct S9Sleep: View {
     }
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s9, onBack: onBack) {
+        ScreenShell(progress: ScreenProgress.s7, onBack: onBack) {
             VStack(alignment: .leading, spacing: 0) {
                 EyebrowTag(text: "Recovery input")
                     .phaseFadeUp(phase: phase, delay: 0.05)
 
                 Spacer().frame(height: 18)
 
-                (Text("How much ")
+                (Text("How much do you usually ")
                     .foregroundColor(.white)
                  + Text("sleep")
                     .foregroundColor(SYN.cyan)
-                 + Text(" do you get?").foregroundColor(.white))
+                 + Text("?").foregroundColor(.white))
                     .font(.synDisplay(28, weight: .bold))
                     .kerning(-0.9)
                     .lineSpacing(2)
                     .shadow(color: SYN.cyan.opacity(0.25), radius: 12)
                     .phaseFadeUp(phase: phase, delay: 0.18)
+
+                Spacer().frame(height: 10)
+
+                Text("Hours per night, your typical average. We'll compare against your actual check-ins.")
+                    .font(.synText(15))
+                    .foregroundStyle(SYN.textDim)
+                    .phaseFadeUp(phase: phase, delay: 0.26)
 
                 Spacer().frame(minHeight: 28)
 
@@ -68,6 +75,7 @@ struct S9Sleep: View {
         } cta: {
             PrimaryButton(title: "Continue") {
                 model.sleepHours = hours
+                UserDefaults.standard.set(hours, forKey: "sleepBaseline")
                 onNext()
             }
         }

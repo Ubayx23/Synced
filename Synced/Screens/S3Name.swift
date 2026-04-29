@@ -16,7 +16,7 @@ struct S3Name: View {
     var body: some View {
         ScreenShell(progress: ScreenProgress.s3, onBack: onBack) {
             VStack(alignment: .leading, spacing: 0) {
-                EyebrowTag(text: "Personal profile")
+                EyebrowTag(text: "About you")
                     .phaseFadeUp(phase: phase, delay: 0.05)
 
                 Spacer().frame(height: 20)
@@ -32,7 +32,7 @@ struct S3Name: View {
 
                 Spacer().frame(height: 12)
 
-                Text("We'll use it to personalize your weekly readouts.")
+                Text("We'll personalize your experience.")
                     .font(.synText(15))
                     .foregroundStyle(SYN.textDim)
                     .phaseFadeUp(phase: phase, delay: 0.30)
@@ -55,6 +55,7 @@ struct S3Name: View {
         } cta: {
             PrimaryButton(title: "Continue", disabled: !isValid) {
                 model.firstName = trimmed
+                UserDefaults.standard.set(trimmed, forKey: "userName")
                 onNext()
             }
         }

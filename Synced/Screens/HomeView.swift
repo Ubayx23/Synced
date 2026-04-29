@@ -1,13 +1,14 @@
 import SwiftUI
 
 // Mock data — Supabase wiring lands on a future branch.
-private let mockUserName    = "Ubay"
 private let mockTier: Tier  = .dialed
 private let mockStreak      = 5
-private let mockSleepHours  = 7.5
-private let mockDaysPerWeek = 4
 
 struct HomeView: View {
+    @AppStorage("userName")           private var userName: String = "there"
+    @AppStorage("trainingFrequency")  private var trainingFrequency: Int = 4
+    @AppStorage("sleepBaseline")      private var sleepBaseline: Double = 7.5
+
     @State private var displayScore: Int = 67
     @State private var preLiftDone: Bool = false
     @State private var postLiftDone: Bool = false
@@ -85,7 +86,7 @@ struct HomeView: View {
                 Text("Good morning,")
                     .font(.synText(14))
                     .foregroundStyle(SYN.textDim)
-                Text(mockUserName)
+                Text(userName)
                     .font(.synDisplay(20, weight: .bold))
                     .foregroundStyle(SYN.text)
             }
@@ -226,8 +227,8 @@ struct HomeView: View {
 
     private var quickStatsRow: some View {
         HStack(spacing: 8) {
-            StatPill(value: String(format: "%.1f", mockSleepHours), label: "hrs sleep")
-            StatPill(value: "\(mockDaysPerWeek)",                   label: "days/week")
+            StatPill(value: String(format: "%.1f", sleepBaseline), label: "hrs sleep")
+            StatPill(value: "\(trainingFrequency)",                label: "days/week")
             LastSessionPill(rating: postLiftDone ? 4 : nil)
         }
     }

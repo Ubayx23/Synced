@@ -181,7 +181,19 @@ struct ProfileView: View {
                 iconColor: Color(hex: "EF4444"),
                 label: "Reset onboarding",
                 labelColor: Color(hex: "EF4444"),
-                action: { hasCompletedOnboarding = false }
+                action: {
+                    let keys = [
+                        "hasCompletedOnboarding",
+                        "userName",
+                        "userAge",
+                        "trainingGoal",
+                        "trainingFrequency",
+                        "sleepBaseline",
+                    ]
+                    for key in keys {
+                        UserDefaults.standard.removeObject(forKey: key)
+                    }
+                }
             )
         }
     }

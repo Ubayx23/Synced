@@ -15,17 +15,17 @@ struct S2Value: View {
     }
     private let steps: [Step] = [
         Step(number: "01",
-             title: "Tell us about you",
-             blurb: "Goals, habits, sleep, recovery patterns.",
-             symbol: "person.crop.circle.dashed"),
+             title: "Log before and after",
+             blurb: "60 seconds each. Sleep, food, timing, session feel.",
+             symbol: "square.and.pencil"),
         Step(number: "02",
-             title: "We watch you train",
-             blurb: "We learn what works, and what wrecks you.",
+             title: "Synced finds your patterns",
+             blurb: "What you ate, how you slept, when you lifted. It all connects.",
              symbol: "chart.line.uptrend.xyaxis"),
         Step(number: "03",
-             title: "You get smarter weekly",
-             blurb: "Each Sunday you unlock the next layer.",
-             symbol: "sparkles")
+             title: "Compete with your gym group",
+             blurb: "Weekly tier resets every Sunday. Climb the leaderboard.",
+             symbol: "trophy.fill")
     ]
 
     var body: some View {
@@ -36,9 +36,9 @@ struct S2Value: View {
 
                 Spacer().frame(height: 20)
 
-                (Text("Recovery you can ")
+                (Text("Know why your lifts feel ")
                     .foregroundColor(.white)
-                 + Text("trust.")
+                 + Text("different.")
                     .foregroundColor(SYN.cyan))
                     .font(.synDisplay(30, weight: .bold))
                     .kerning(-0.9)
@@ -48,7 +48,7 @@ struct S2Value: View {
 
                 Spacer().frame(height: 14)
 
-                Text("Three steps. No guesswork. Built for serious gym-goers.")
+                Text("Two check-ins per session. Patterns over time.")
                     .font(.synText(15))
                     .foregroundStyle(SYN.textDim)
                     .phaseFadeUp(phase: phase, delay: 0.30)
@@ -65,7 +65,7 @@ struct S2Value: View {
                 Spacer()
             }
         } cta: {
-            PrimaryButton(title: "Continue", action: onNext)
+            PrimaryButton(title: "Let's build your profile", action: onNext)
         }
         .task { withAnimation { phase = 1 } }
     }
