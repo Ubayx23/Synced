@@ -13,7 +13,7 @@ struct PreLiftCheckInView: View {
     @State private var ctaPulse: Double = 1.0
     @State private var draftLoaded: Bool = false
 
-    private let totalSteps = 2
+    private let totalSteps = 3
 
     var body: some View {
         ZStack {
@@ -90,7 +90,8 @@ struct PreLiftCheckInView: View {
             Group {
                 switch currentStep {
                 case 1: SleepStep(sleepHours: $sleepHours)
-                default: FoodStep(mealItems: $mealItems, mealTime: $mealTime, liftTime: $liftTime)
+                case 2: FoodStep(mealItems: $mealItems)
+                default: TimingStep(mealTime: $mealTime, liftTime: $liftTime)
                 }
             }
             .id(currentStep)
@@ -111,7 +112,8 @@ struct PreLiftCheckInView: View {
     private var canAdvance: Bool {
         switch currentStep {
         case 1: return true
-        default: return !mealItems.isEmpty && liftTime > mealTime
+        case 2: return !mealItems.isEmpty
+        default: return liftTime > mealTime
         }
     }
 
@@ -180,7 +182,8 @@ private struct PreLiftDraft: Codable {
 }
 
 private enum PreLiftDraftStore {
-    static let key = "preLiftDraft"
+    // Bumped on each schema/flow change so older drafts are silently ignored.
+    static let key = "preLiftDraft.v3"
 
     /// Drafts written by an older schema fail to decode; we treat that as
     /// "no draft" and let the user start fresh.
