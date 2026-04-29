@@ -1,16 +1,18 @@
 import SwiftUI
 
 // Mock data — Supabase wiring lands on a future branch.
-private let mockUserName       = "Ubay"
-private let mockScore          = 67
-private let mockTier: Tier     = .dialed
-private let mockStreak         = 5
-private let mockSleepHours     = 7.5
-private let mockDaysPerWeek    = 4
-private let mockPreLiftDone    = false
-private let mockPostLiftDone   = false
+private let mockUserName    = "Ubay"
+private let mockTier: Tier  = .dialed
+private let mockStreak      = 5
+private let mockSleepHours  = 7.5
+private let mockDaysPerWeek = 4
 
 struct HomeView: View {
+    @State private var displayScore: Int = 67
+    @State private var preLiftDone: Bool = false
+    @State private var postLiftDone: Bool = false
+    @State private var showingPreLift: Bool = false
+
     var body: some View {
         ZStack {
             SYN.bg.ignoresSafeArea()
@@ -38,6 +40,19 @@ struct HomeView: View {
                     Color.clear.frame(height: 32)
                 }
                 .padding(.horizontal, Spacing.pageH)
+            }
+        }
+        .sheet(isPresented: $showingPreLift) {
+            PreLiftCheckInView(isComplete: $preLiftDone)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+        }
+        .onChange(of: preLiftDone) { _, new in
+            guard new else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                    displayScore = 71
+                }
             }
         }
     }
@@ -80,11 +95,12 @@ struct HomeView: View {
 
             Spacer().frame(height: 16)
 
-            Text("\(mockScore)")
+            Text("\(displayScore)")
                 .font(.synMono(80, weight: .bold))
                 .kerning(-2)
                 .foregroundStyle(mockTier.color)
                 .shadow(color: mockTier.color.opacity(0.25), radius: 16)
+                .contentTransition(.numericText())
 
             Spacer().frame(height: 8)
 
@@ -100,14 +116,14 @@ struct HomeView: View {
             Spacer().frame(height: 12)
 
             if let next = mockTier.next {
-                let pointsToNext = max(0, next.range.lowerBound - mockScore)
+                let pointsToNext = max(0, next.range.lowerBound - displayScore)
                 Text("\(pointsToNext) points to \(next.displayName)")
                     .font(.synText(13))
                     .foregroundStyle(SYN.textDim)
 
                 Spacer().frame(height: 16)
 
-                tierProgressBar(score: mockScore, tier: mockTier, next: next)
+                tierProgressBar(score: displayScore, tier: mockTier, next: next)
             } else {
                 Text("Top tier reached")
                     .font(.synText(13))
@@ -156,20 +172,22 @@ struct HomeView: View {
                 CheckInCard(
                     title: "Pre-lift check-in",
                     subtitle: "Sleep, energy, nutrition",
-                    state: mockPreLiftDone ? .done : .active
+                    state: preLiftDone ? .done : .active,
+                    onStart: { showingPreLift = true }
                 )
                 CheckInCard(
                     title: "Post-lift check-in",
                     subtitle: "Session feel, performance",
-                    state: postLiftState
+                    state: postLiftState,
+                    onStart: { /* future: post-lift sheet */ }
                 )
             }
         }
     }
 
     private var postLiftState: CheckInCard.CheckState {
-        if mockPostLiftDone { return .done }
-        if !mockPreLiftDone { return .locked }
+        if postLiftDone { return .done }
+        if !preLiftDone { return .locked }
         return .active
     }
 
@@ -192,6 +210,7 @@ private struct CheckInCard: View {
     let title: String
     let subtitle: String
     let state: CheckState
+    var onStart: () -> Void = {}
 
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
@@ -207,8 +226,11 @@ private struct CheckInCard: View {
             Spacer()
 
             switch state {
-            case .active: startPill(active: true)
-            case .locked: startPill(active: false)
+            case .active:
+                Button(action: onStart) { startPill(active: true) }
+                    .buttonStyle(.plain)
+            case .locked:
+                startPill(active: false)
             case .done:
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 24))
