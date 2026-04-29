@@ -13,6 +13,7 @@ struct PreLiftCheckInView: View {
     @State private var energyLevel: Double = 5.0
 
     @State private var ctaPulse: Double = 1.0
+    @State private var draftLoaded: Bool = false
 
     var body: some View {
         ZStack {
@@ -33,6 +34,7 @@ struct PreLiftCheckInView: View {
                     .padding(.bottom, 48)
             }
         }
+        .onAppear { restoreDraftIfFresh() }
         .onChange(of: currentStep) { _, new in
             if new == 5 {
                 ctaPulse = 0.96
@@ -40,7 +42,47 @@ struct PreLiftCheckInView: View {
                     ctaPulse = 1.0
                 }
             }
+            saveDraft()
         }
+        .onChange(of: sleepHours)   { _, _ in saveDraft() }
+        .onChange(of: sleepQuality) { _, _ in saveDraft() }
+        .onChange(of: mealType)     { _, _ in saveDraft() }
+        .onChange(of: mealTime)     { _, _ in saveDraft() }
+        .onChange(of: energyLevel)  { _, _ in saveDraft() }
+    }
+
+    // MARK: - Draft persistence
+
+    private func restoreDraftIfFresh() {
+        defer { draftLoaded = true }
+        guard let draft = PreLiftDraftStore.load() else { return }
+        guard Calendar.current.isDate(draft.savedAt, inSameDayAs: Date()) else {
+            PreLiftDraftStore.clear()
+            return
+        }
+        currentStep  = draft.currentStep
+        sleepHours   = draft.sleepHours
+        sleepQuality = draft.sleepQuality
+        mealType     = draft.mealType
+        mealTime     = draft.mealTime
+        mealTiming   = draft.mealTiming
+        energyLevel  = draft.energyLevel
+    }
+
+    private func saveDraft() {
+        guard draftLoaded else { return }
+        PreLiftDraftStore.save(
+            PreLiftDraft(
+                currentStep: currentStep,
+                sleepHours: sleepHours,
+                sleepQuality: sleepQuality,
+                mealType: mealType,
+                mealTime: mealTime,
+                mealTiming: mealTiming,
+                energyLevel: energyLevel,
+                savedAt: Date()
+            )
+        )
     }
 
     // MARK: - Top bar
@@ -134,7 +176,39 @@ struct PreLiftCheckInView: View {
     }
 
     private func handleComplete() {
+        PreLiftDraftStore.clear()
         isComplete = true
         dismiss()
+    }
+}
+
+// MARK: - Draft model + storage
+
+private struct PreLiftDraft: Codable {
+    var currentStep: Int
+    var sleepHours: Double
+    var sleepQuality: Int
+    var mealType: String
+    var mealTime: Date
+    var mealTiming: String
+    var energyLevel: Double
+    var savedAt: Date
+}
+
+private enum PreLiftDraftStore {
+    static let key = "preLiftDraft"
+
+    static func load() -> PreLiftDraft? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(PreLiftDraft.self, from: data)
+    }
+
+    static func save(_ draft: PreLiftDraft) {
+        guard let data = try? JSONEncoder().encode(draft) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: key)
     }
 }
