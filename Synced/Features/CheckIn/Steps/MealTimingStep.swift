@@ -28,11 +28,7 @@ struct MealTimingStep: View {
 
             Spacer().frame(height: 64)
 
-            DatePicker("", selection: $mealTime, displayedComponents: .hourAndMinute)
-                .datePickerStyle(.wheel)
-                .labelsHidden()
-                .colorScheme(.dark)
-                .frame(maxWidth: .infinity)
+            TimePickerInput(selectedTime: $mealTime)
 
             Spacer().frame(height: 16)
 
@@ -55,10 +51,26 @@ struct MealTimingStep: View {
             let interval = Int(now.timeIntervalSince(mealTime))
             let hours = interval / 3600
             let minutes = (interval % 3600) / 60
-            Text("That's \(hours) hrs \(minutes) mins before your lift")
+            Text(phrase(hours: hours, minutes: minutes))
                 .font(.synText(14))
                 .foregroundStyle(SYN.textDim)
         }
+    }
+
+    private func phrase(hours: Int, minutes: Int) -> String {
+        if hours == 0 && minutes == 0 {
+            return "That's just now"
+        }
+        if hours == 0 {
+            let unit = minutes == 1 ? "min" : "mins"
+            return "That's \(minutes) \(unit) before your lift"
+        }
+        let hUnit = hours == 1 ? "hr" : "hrs"
+        if minutes == 0 {
+            return "That's \(hours) \(hUnit) before your lift"
+        }
+        let mUnit = minutes == 1 ? "min" : "mins"
+        return "That's \(hours) \(hUnit) \(minutes) \(mUnit) before your lift"
     }
 }
 
