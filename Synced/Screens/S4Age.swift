@@ -9,18 +9,14 @@ struct S4Age: View {
     @State private var age: Int = 20
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s4, onBack: onBack) {
+        ScreenShell(progress: ScreenProgress.s4, onBack: onBack, ambient: false) {
             VStack(alignment: .leading, spacing: 0) {
                 EyebrowTag(text: "Baseline calibration")
                     .phaseFadeUp(phase: phase, delay: 0.05)
 
                 Spacer().frame(height: 16)
 
-                (Text("How old ")
-                    .foregroundColor(.white)
-                 + Text("are you")
-                    .foregroundColor(SYN.cyan)
-                 + Text("?").foregroundColor(.white))
+                ageHeadline
                     .font(.synDisplay(30, weight: .bold))
                     .kerning(-0.9)
                     .shadow(color: SYN.cyan.opacity(0.25), radius: 12)
@@ -28,7 +24,7 @@ struct S4Age: View {
 
                 Spacer().frame(height: 10)
 
-                Text("Recovery models are different at every age.")
+                Text("Helps calibrate your recovery baseline.")
                     .font(.synText(15))
                     .foregroundStyle(SYN.textDim)
                     .phaseFadeUp(phase: phase, delay: 0.30)
@@ -44,10 +40,17 @@ struct S4Age: View {
         } cta: {
             PrimaryButton(title: "Continue") {
                 model.age = age
+                UserDefaults.standard.set(age, forKey: "userAge")
                 onNext()
             }
         }
         .onAppear { age = model.age }
         .task { withAnimation { phase = 1 } }
+    }
+
+    /// Headline tail varies on whether we have the user's first name yet.
+    private var ageHeadline: Text {
+        let suffix = model.firstName.isEmpty ? "?" : ", \(model.firstName)?"
+        return Text("How old are you\(suffix)").foregroundColor(SYN.text)
     }
 }

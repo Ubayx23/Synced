@@ -3,62 +3,78 @@ import SwiftUI
 struct S12TierReveal: View {
     var model: OnboardingModel
     var onBack: () -> Void
+    /// Called from the "Enter Synced" CTA. Caller flips
+    /// `hasCompletedOnboarding` so `RootView` can swap to `MainTabView`.
     var onNext: () -> Void
 
     @State private var phase = 0
 
-    private var tier: Tier { model.resolvedTier }
+    private let tier: Tier = .active
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s12, onBack: onBack, ambient: false) {
+        ScreenShell(progress: nil, onBack: onBack, ambient: false) {
             VStack(spacing: 0) {
-                Spacer().frame(height: 12)
+                Spacer().frame(height: 8)
 
                 LuminousOrb(
-                    diameter: 220,
+                    diameter: 200,
                     color: tier.color,
                     icon: AnyView(
                         Image(systemName: tier.iconSystemName)
-                            .font(.system(size: 36, weight: .bold))
+                            .font(.system(size: 32, weight: .bold))
                             .foregroundStyle(.white)
                             .shadow(color: tier.color.opacity(0.8), radius: 12)
                     ),
                     tierMode: true
                 )
 
-                Spacer().frame(height: 32)
+                Spacer().frame(height: 24)
 
-                EyebrowTag(text: "Your starting tier")
+                EyebrowTag(text: "Based on your answers")
                     .phaseFadeUp(phase: phase, delay: 0.05)
 
-                Spacer().frame(height: 14)
+                Spacer().frame(height: 12)
 
-                tierName
-                    .phaseFadeUp(phase: phase, delay: 0.18)
+                Text("Your starting tier is")
+                    .font(.synDisplay(22, weight: .medium))
+                    .foregroundStyle(SYN.textDim)
+                    .phaseFadeUp(phase: phase, delay: 0.14)
+
+                Spacer().frame(height: 4)
+
+                Text(tier.displayName)
+                    .font(.synDisplay(40, weight: .bold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .white.opacity(0.25), radius: 14)
+                    .phaseFadeUp(phase: phase, delay: 0.22)
 
                 Spacer().frame(height: 6)
 
-                Text("Score range: \(tier.range.lowerBound)–\(tier.range.upperBound)")
-                    .font(.synMono(13, weight: .medium))
+                Text("40 to 59 score range")
+                    .font(.synMono(14))
                     .foregroundStyle(SYN.textFaint)
                     .phaseFadeUp(phase: phase, delay: 0.30)
 
-                Spacer().frame(height: 22)
+                Spacer().frame(height: 20)
 
                 explainerCard
-                    .phaseFadeUp(phase: phase, delay: 0.42)
+                    .phaseFadeUp(phase: phase, delay: 0.40)
+
+                Spacer().frame(height: 18)
+
+                tierLadder
+                    .phaseFadeUp(phase: phase, delay: 0.52)
+
+                Spacer().frame(height: 12)
+
+                Text("Tiers reset every Sunday at midnight.")
+                    .font(.synText(12))
+                    .foregroundStyle(SYN.textFaint)
+                    .phaseFadeUp(phase: phase, delay: 0.62)
 
                 Spacer()
             }
-            .background(
-                RadialGradient(
-                    colors: [tier.color.opacity(0.22), tier.color.opacity(0.06), .clear],
-                    center: UnitPoint(x: 0.5, y: 0.30),
-                    startRadius: 0, endRadius: 420
-                )
-                .blendMode(.plusLighter)
-                .allowsHitTesting(false)
-            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } cta: {
             PrimaryButton(title: "Enter Synced", action: onNext)
         }
@@ -68,50 +84,79 @@ struct S12TierReveal: View {
         }
     }
 
-    @ViewBuilder
-    private var tierName: some View {
-        if tier == .synced {
-            Text(tier.displayName)
-                .font(.synDisplay(48, weight: .bold))
-                .kerning(-1.4)
-                .foregroundStyle(
-                    LinearGradient(colors: [.white, SYN.cyan],
-                                   startPoint: .top, endPoint: .bottom)
-                )
-                .shadow(color: SYN.cyan.opacity(0.5), radius: 16)
-        } else if tier == .active {
-            Text(tier.displayName)
-                .font(.synDisplay(48, weight: .bold))
-                .kerning(-1.4)
-                .foregroundStyle(.white)
-                .shadow(color: .white.opacity(0.25), radius: 14)
-        } else {
-            Text(tier.displayName)
-                .font(.synDisplay(48, weight: .bold))
-                .kerning(-1.4)
-                .foregroundStyle(tier.color)
-                .shadow(color: tier.color.opacity(0.55), radius: 14)
+    // MARK: - Explainer
+
+    private var explainerCard: some View {
+        (Text("Active").bold().foregroundColor(.white)
+         + Text(" means you're showing up. Hit 60+ this week to reach ")
+            .foregroundColor(SYN.textDim)
+         + Text("Dialed").bold().foregroundColor(.white)
+         + Text(".").foregroundColor(SYN.textDim))
+            .font(.synText(15))
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: Radius.card)
+                    .fill(SYN.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.card)
+                    .stroke(SYN.border, lineWidth: 1)
+            )
+    }
+
+    // MARK: - Tier ladder
+
+    private var tierLadder: some View {
+        VStack(spacing: 8) {
+            ForEach(Tier.allCases) { t in
+                tierRow(t)
+            }
         }
     }
 
-    private var explainerCard: some View {
-        HStack(spacing: 0) {
-            Rectangle().fill(tier.color).frame(width: 2)
-                .shadow(color: tier.color.opacity(0.6), radius: 6)
-
-            Text(tier.tagline)
-                .font(.synText(15))
-                .foregroundStyle(SYN.text)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 16)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    @ViewBuilder
+    private func tierRow(_ t: Tier) -> some View {
+        let isCurrent = (t == tier)
+        HStack(spacing: 10) {
+            tierDot(t)
+            Text(t.displayName)
+                .font(isCurrent ? .synDisplay(15, weight: .semibold) : .synText(13, weight: .medium))
+                .foregroundStyle(isCurrent ? SYN.text : SYN.textDim)
+            Spacer()
+            Text("\(t.range.lowerBound) to \(t.range.upperBound)")
+                .font(.synMono(13))
+                .foregroundStyle(SYN.textFaint)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, isCurrent ? 8 : 6)
         .background(
-            RoundedRectangle(cornerRadius: Radius.card)
-                .fill(LinearGradient(colors: [Color(hex: 0x1A1A1E), Color(hex: 0x131316)],
-                                     startPoint: .top, endPoint: .bottom))
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isCurrent ? SYN.surfaceHi : Color.clear)
         )
-        .overlay(RoundedRectangle(cornerRadius: Radius.card).stroke(SYN.border, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.card))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isCurrent ? SYN.cyan.opacity(0.6) : .clear, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func tierDot(_ t: Tier) -> some View {
+        if t == .synced {
+            Circle()
+                .fill(SYN.cyan)
+                .frame(width: 10, height: 10)
+                .shadow(color: SYN.cyan.opacity(0.6), radius: 4)
+        } else if t == tier {
+            Circle()
+                .fill(SYN.text)
+                .frame(width: 8, height: 8)
+        } else {
+            Circle()
+                .fill(t.color)
+                .frame(width: 8, height: 8)
+        }
     }
 }

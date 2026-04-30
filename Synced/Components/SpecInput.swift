@@ -15,14 +15,12 @@ struct SpecInput: View {
     @FocusState private var focused: Bool
 
     private var borderColor: Color {
-        if let isValid {
-            return isValid ? SYN.green : SYN.red
-        }
+        if let isValid, !isValid { return SYN.red }
         return focused ? SYN.cyan : SYN.border
     }
 
     private var glowColor: Color {
-        if let isValid { return isValid ? SYN.green.opacity(0.45) : SYN.red.opacity(0.45) }
+        if let isValid, !isValid { return SYN.red.opacity(0.45) }
         return focused ? SYN.cyan.opacity(0.45) : .clear
     }
 

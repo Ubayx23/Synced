@@ -9,23 +9,22 @@ struct S8Frequency: View {
     @State private var days: Double = 4
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s8, onBack: onBack) {
+        ScreenShell(progress: ScreenProgress.s6, onBack: onBack, ambient: false) {
             VStack(alignment: .leading, spacing: 0) {
-                EyebrowTag(text: "Training volume")
-                    .phaseFadeUp(phase: phase, delay: 0.05)
-
-                Spacer().frame(height: 18)
-
-                (Text("How many days do you ")
-                    .foregroundColor(.white)
-                 + Text("lift")
-                    .foregroundColor(SYN.cyan)
-                 + Text("?").foregroundColor(.white))
+                Text("How often do you lift?")
                     .font(.synDisplay(28, weight: .bold))
+                    .foregroundStyle(SYN.text)
                     .kerning(-0.9)
                     .lineSpacing(2)
                     .shadow(color: SYN.cyan.opacity(0.25), radius: 12)
                     .phaseFadeUp(phase: phase, delay: 0.18)
+
+                Spacer().frame(height: 10)
+
+                Text("Days per week, on average.")
+                    .font(.synText(15))
+                    .foregroundStyle(SYN.textDim)
+                    .phaseFadeUp(phase: phase, delay: 0.26)
 
                 Spacer().frame(minHeight: 28)
 
@@ -59,7 +58,9 @@ struct S8Frequency: View {
             }
         } cta: {
             PrimaryButton(title: "Continue") {
-                model.daysPerWeek = Int(days)
+                let n = Int(days)
+                model.daysPerWeek = n
+                UserDefaults.standard.set(n, forKey: "trainingFrequency")
                 onNext()
             }
         }

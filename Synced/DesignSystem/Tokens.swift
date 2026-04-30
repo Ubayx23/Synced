@@ -7,6 +7,14 @@ extension Color {
         let b = Double(hex & 0xFF) / 255
         self.init(.sRGB, red: r, green: g, blue: b, opacity: alpha)
     }
+
+    /// Accepts 6-character hex strings with optional `#` prefix, e.g. `"#00E5FF"` or `"00E5FF"`.
+    init(hex: String, alpha: Double = 1.0) {
+        var s = hex
+        if s.hasPrefix("#") { s.removeFirst() }
+        let v = UInt32(s, radix: 16) ?? 0
+        self.init(hex: v, alpha: alpha)
+    }
 }
 
 enum SYN {
@@ -21,8 +29,9 @@ enum SYN {
     static let cyan        = Color(hex: 0x00E5FF)
     static let cyanSoft    = Color(hex: 0x7CE8F5)
     static let red         = Color(hex: 0xFF453A)
-    static let amber       = Color(hex: 0xFFB020)
+    static let amber       = Color(hex: 0xF59E0B)
     static let green       = Color(hex: 0x22C55E)
+    static let bronze      = Color(hex: 0xCD7F32)
 }
 
 enum Spacing {

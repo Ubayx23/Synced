@@ -5,24 +5,32 @@ struct S1Welcome: View {
     @State private var phase = 0
 
     var body: some View {
-        ScreenShell(progress: nil, onBack: nil) {
+        ZStack {
+            // Match the launch screen's solid black background so the
+            // crossfade reads as new copy materializing around the existing
+            // logo, not as a background shift.
+            Color.black.ignoresSafeArea()
+            content
+        }
+    }
+
+    private var content: some View {
+        ScreenShell(progress: nil, onBack: nil, ambient: false) {
             VStack(spacing: 0) {
                 Spacer()
 
                 VStack(spacing: 28) {
+                    // Icon and wordmark are already fully visible when the
+                    // launch screen finishes; do not re-animate them here.
                     PulseRingIcon(size: 96)
-                        .scaleEffect(phase >= 1 ? 1 : 0.7)
-                        .opacity(phase >= 1 ? 1 : 0)
-                        .animation(.spring(response: 0.7, dampingFraction: 0.78), value: phase)
 
                     SyncedWordmark(size: 56)
                         .shadow(color: SYN.cyan.opacity(0.45), radius: 22)
-                        .phaseFadeUp(phase: phase, delay: 0.18)
 
                     Text("Train smarter. Recover harder.")
                         .font(.synText(17))
                         .foregroundStyle(SYN.textDim)
-                        .phaseFadeUp(phase: phase, delay: 0.34)
+                        .phaseFadeUp(phase: phase, delay: 0.10)
                 }
                 .background(
                     Circle()
@@ -40,8 +48,8 @@ struct S1Welcome: View {
                 PrimaryButton(title: "Get Started", action: onNext)
                 TextLinkButton(title: "I already have an account") { /* future: sign-in */ }
             }
-            .phaseFadeUp(phase: phase, delay: 0.5)
+            .phaseFadeUp(phase: phase, delay: 0.25)
         }
-        .task { withAnimation { phase = 1 } }
+        .task { withAnimation(.easeOut(duration: 0.4)) { phase = 1 } }
     }
 }
