@@ -27,7 +27,8 @@ targets:
       path: Synced/Info.plist
       properties:
         CFBundleDisplayName: Synced
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIColorName: LaunchBg
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UIApplicationSupportsIndirectInputEvents: true
