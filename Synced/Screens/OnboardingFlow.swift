@@ -14,7 +14,7 @@ struct OnboardingFlow: View {
 
     var body: some View {
         ZStack {
-            ScreenBackground()
+            SYN.bg.ignoresSafeArea()
 
             Group {
                 switch step {

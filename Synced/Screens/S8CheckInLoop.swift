@@ -7,7 +7,7 @@ struct S8CheckInLoop: View {
     @State private var phase = 0
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s8, onBack: onBack) {
+        ScreenShell(progress: ScreenProgress.s8, onBack: onBack, ambient: false) {
             VStack(alignment: .leading, spacing: 0) {
                 EyebrowTag(text: "How it works")
                     .phaseFadeUp(phase: phase, delay: 0.05)
@@ -76,13 +76,14 @@ struct S8CheckInLoop: View {
 
             Text(pillLabel)
                 .font(.synText(13, weight: .medium))
-                .foregroundStyle(SYN.cyan)
-                .padding(.horizontal, 12)
-                .frame(width: 72, height: 28)
-                .overlay(
+                .foregroundStyle(SYN.textDim)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(SYN.cyan, lineWidth: 1.5)
+                        .fill(SYN.surfaceHi)
                 )
+                .allowsHitTesting(false)
         }
         .padding(20)
         .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
@@ -131,9 +132,8 @@ struct S8CheckInLoop: View {
             EyebrowText(text: "After 2 weeks")
                 .foregroundStyle(SYN.textFaint)
 
-            Text("\u{201C}You lift best after 7.5hrs sleep and chicken rice 2 to 3hrs before your session.\u{201D}")
+            Text("You lift best after 7.5hrs sleep and chicken and rice 2 to 3hrs before your session.")
                 .font(.synText(15, weight: .medium))
-                .italic()
                 .foregroundStyle(SYN.text)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 280)

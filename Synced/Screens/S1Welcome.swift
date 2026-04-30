@@ -5,6 +5,15 @@ struct S1Welcome: View {
     @State private var phase = 0
 
     var body: some View {
+        ZStack {
+            // Welcome owns the premium gradient. Every other onboarding screen
+            // sits on flat SYN.bg so the gradient feels like an arrival moment.
+            ScreenBackground()
+            content
+        }
+    }
+
+    private var content: some View {
         ScreenShell(progress: nil, onBack: nil) {
             VStack(spacing: 0) {
                 Spacer()

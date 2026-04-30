@@ -9,7 +9,7 @@ struct S9Notifications: View {
     @State private var requesting = false
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s9, onBack: onBack) {
+        ScreenShell(progress: ScreenProgress.s9, onBack: onBack, ambient: false) {
             VStack(alignment: .leading, spacing: 0) {
                 EyebrowTag(text: "Stay on track")
                     .phaseFadeUp(phase: phase, delay: 0.05)

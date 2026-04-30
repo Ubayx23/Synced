@@ -12,7 +12,7 @@ struct S12TierReveal: View {
     private let tier: Tier = .active
 
     var body: some View {
-        ScreenShell(progress: nil, onBack: onBack) {
+        ScreenShell(progress: nil, onBack: onBack, ambient: false) {
             VStack(spacing: 0) {
                 Spacer().frame(height: 8)
 
@@ -94,6 +94,7 @@ struct S12TierReveal: View {
          + Text(".").foregroundColor(SYN.textDim))
             .font(.synText(15))
             .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
             .background(
@@ -122,7 +123,7 @@ struct S12TierReveal: View {
         HStack(spacing: 10) {
             tierDot(t)
             Text(t.displayName)
-                .font(.synText(13, weight: .medium))
+                .font(isCurrent ? .synDisplay(15, weight: .semibold) : .synText(13, weight: .medium))
                 .foregroundStyle(isCurrent ? SYN.text : SYN.textDim)
             Spacer()
             Text("\(t.range.lowerBound) to \(t.range.upperBound)")
@@ -130,10 +131,14 @@ struct S12TierReveal: View {
                 .foregroundStyle(SYN.textFaint)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.vertical, isCurrent ? 8 : 6)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(isCurrent ? SYN.surfaceHi : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isCurrent ? SYN.cyan.opacity(0.6) : .clear, lineWidth: 1)
         )
     }
 
@@ -141,8 +146,12 @@ struct S12TierReveal: View {
     private func tierDot(_ t: Tier) -> some View {
         if t == .synced {
             Circle()
-                .fill(LinearGradient(colors: [SYN.cyan, .white],
-                                     startPoint: .top, endPoint: .bottom))
+                .fill(SYN.cyan)
+                .frame(width: 10, height: 10)
+                .shadow(color: SYN.cyan.opacity(0.6), radius: 4)
+        } else if t == tier {
+            Circle()
+                .fill(SYN.text)
                 .frame(width: 8, height: 8)
         } else {
             Circle()

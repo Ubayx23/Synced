@@ -9,19 +9,11 @@ struct S7Goal: View {
     @State private var selected: Goal? = nil
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s5, onBack: onBack) {
+        ScreenShell(progress: ScreenProgress.s5, onBack: onBack, ambient: false) {
             VStack(alignment: .leading, spacing: 0) {
-                EyebrowTag(text: "Your primary goal")
-                    .phaseFadeUp(phase: phase, delay: 0.05)
-
-                Spacer().frame(height: 18)
-
-                (Text("What are you ")
-                    .foregroundColor(.white)
-                 + Text("training")
-                    .foregroundColor(SYN.cyan)
-                 + Text(" for?").foregroundColor(.white))
+                Text("What are you training for?")
                     .font(.synDisplay(30, weight: .bold))
+                    .foregroundStyle(SYN.text)
                     .kerning(-0.9)
                     .lineSpacing(2)
                     .shadow(color: SYN.cyan.opacity(0.25), radius: 12)

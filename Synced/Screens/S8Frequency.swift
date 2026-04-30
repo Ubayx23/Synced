@@ -9,19 +9,11 @@ struct S8Frequency: View {
     @State private var days: Double = 4
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s6, onBack: onBack) {
+        ScreenShell(progress: ScreenProgress.s6, onBack: onBack, ambient: false) {
             VStack(alignment: .leading, spacing: 0) {
-                EyebrowTag(text: "Your schedule")
-                    .phaseFadeUp(phase: phase, delay: 0.05)
-
-                Spacer().frame(height: 18)
-
-                (Text("How often do you ")
-                    .foregroundColor(.white)
-                 + Text("lift")
-                    .foregroundColor(SYN.cyan)
-                 + Text("?").foregroundColor(.white))
+                Text("How often do you lift?")
                     .font(.synDisplay(28, weight: .bold))
+                    .foregroundStyle(SYN.text)
                     .kerning(-0.9)
                     .lineSpacing(2)
                     .shadow(color: SYN.cyan.opacity(0.25), radius: 12)

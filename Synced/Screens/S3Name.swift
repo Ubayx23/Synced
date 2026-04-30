@@ -14,18 +14,11 @@ struct S3Name: View {
     private var isValid: Bool { trimmed.count >= 2 }
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s3, onBack: onBack) {
+        ScreenShell(progress: ScreenProgress.s3, onBack: onBack, ambient: false) {
             VStack(alignment: .leading, spacing: 0) {
-                EyebrowTag(text: "About you")
-                    .phaseFadeUp(phase: phase, delay: 0.05)
-
-                Spacer().frame(height: 20)
-
-                (Text("What's your ")
-                    .foregroundColor(.white)
-                 + Text("name?")
-                    .foregroundColor(SYN.cyan))
+                Text("What's your name?")
                     .font(.synDisplay(30, weight: .bold))
+                    .foregroundStyle(SYN.text)
                     .kerning(-0.9)
                     .shadow(color: SYN.cyan.opacity(0.25), radius: 12)
                     .phaseFadeUp(phase: phase, delay: 0.18)
@@ -54,8 +47,9 @@ struct S3Name: View {
             }
         } cta: {
             PrimaryButton(title: "Continue", disabled: !isValid) {
-                model.firstName = trimmed
-                UserDefaults.standard.set(trimmed, forKey: "userName")
+                let formatted = trimmed.prefix(1).uppercased() + trimmed.dropFirst()
+                model.firstName = formatted
+                UserDefaults.standard.set(formatted, forKey: "userName")
                 onNext()
             }
         }

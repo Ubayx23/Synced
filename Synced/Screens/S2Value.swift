@@ -29,7 +29,7 @@ struct S2Value: View {
     ]
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s2, onBack: onBack) {
+        ScreenShell(progress: ScreenProgress.s2, onBack: onBack, ambient: false) {
             VStack(alignment: .leading, spacing: 0) {
                 EyebrowTag(text: "How it works")
                     .phaseFadeUp(phase: phase, delay: 0.05)

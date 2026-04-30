@@ -9,7 +9,7 @@ struct S4Age: View {
     @State private var age: Int = 20
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s4, onBack: onBack) {
+        ScreenShell(progress: ScreenProgress.s4, onBack: onBack, ambient: false) {
             VStack(alignment: .leading, spacing: 0) {
                 EyebrowTag(text: "Baseline calibration")
                     .phaseFadeUp(phase: phase, delay: 0.05)
@@ -51,8 +51,6 @@ struct S4Age: View {
     /// Headline tail varies on whether we have the user's first name yet.
     private var ageHeadline: Text {
         let suffix = model.firstName.isEmpty ? "?" : ", \(model.firstName)?"
-        return Text("How old ").foregroundColor(.white)
-            + Text("are you").foregroundColor(SYN.cyan)
-            + Text(suffix).foregroundColor(.white)
+        return Text("How old are you\(suffix)").foregroundColor(SYN.text)
     }
 }

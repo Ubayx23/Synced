@@ -15,19 +15,11 @@ struct S9Sleep: View {
     }
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s7, onBack: onBack) {
+        ScreenShell(progress: ScreenProgress.s7, onBack: onBack, ambient: false) {
             VStack(alignment: .leading, spacing: 0) {
-                EyebrowTag(text: "Recovery input")
-                    .phaseFadeUp(phase: phase, delay: 0.05)
-
-                Spacer().frame(height: 18)
-
-                (Text("How much do you usually ")
-                    .foregroundColor(.white)
-                 + Text("sleep")
-                    .foregroundColor(SYN.cyan)
-                 + Text("?").foregroundColor(.white))
+                Text("How much do you usually sleep?")
                     .font(.synDisplay(28, weight: .bold))
+                    .foregroundStyle(SYN.text)
                     .kerning(-0.9)
                     .lineSpacing(2)
                     .shadow(color: SYN.cyan.opacity(0.25), radius: 12)
