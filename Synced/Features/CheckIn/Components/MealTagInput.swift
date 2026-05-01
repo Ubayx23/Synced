@@ -86,6 +86,10 @@ struct MealTagInput: View {
         items.isEmpty ? "Add foods one at a time..." : "Add another..."
     }
 
+    private var addEnabled: Bool {
+        !carbInput.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
     // MARK: - Carb capture row
 
     private var carbRow: some View {
@@ -113,25 +117,37 @@ struct MealTagInput: View {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(SYN.cyan, lineWidth: 1)
                 )
-                .toolbar {
-                    if focusedField == .carbInput {
-                        ToolbarItemGroup(placement: .keyboard) {
-                            Spacer()
-                            Button("Skip") { commitCarb(skip: true) }
-                                .foregroundStyle(SYN.textDim)
-                            Button("Add") { commitCarb(skip: false) }
-                                .fontWeight(.semibold)
-                                .foregroundStyle(SYN.cyan)
-                                .disabled(carbInput.trimmingCharacters(in: .whitespaces).isEmpty)
-                        }
-                    }
-                }
 
             Text("g")
                 .font(.system(size: 13))
                 .foregroundColor(SYN.textDim)
 
             Spacer()
+
+            Button(action: { commitCarb(skip: true) }) {
+                Text("Skip")
+                    .font(.synText(13, weight: .medium))
+                    .foregroundStyle(SYN.textDim)
+                    .padding(.horizontal, 10)
+                    .frame(height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button(action: { commitCarb(skip: false) }) {
+                Text("Add")
+                    .font(.synText(13, weight: .semibold))
+                    .foregroundStyle(addEnabled ? Color.black : SYN.textFaint)
+                    .padding(.horizontal, 14)
+                    .frame(height: 32)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(addEnabled ? SYN.cyan : SYN.surfaceHi)
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!addEnabled)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
