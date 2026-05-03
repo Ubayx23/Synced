@@ -11,7 +11,7 @@ settings:
     SWIFT_VERSION: "5.10"
     # Set in Xcode > Synced target > Signing & Capabilities > Team
     # (or paste your 10-char Team ID here so it persists across xcodegen runs).
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: "M28WFXT445"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
