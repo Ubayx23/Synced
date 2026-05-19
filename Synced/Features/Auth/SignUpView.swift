@@ -17,14 +17,10 @@ struct SignUpView: View {
     @State private var errorMessage: String?
     @State private var currentNonce: String?
 
-    // Step 10 of 11 once inserted. OnboardingFlow's switch is the source of
-    // truth; ScreenProgress sync happens in the wiring task.
-    private let stepProgress: Double = 10.0 / 11.0
-
     var body: some View {
-        ScreenShell(progress: stepProgress, onBack: onBack, ambient: false) {
+        ScreenShell(progress: ScreenProgress.signUp, onBack: onBack, ambient: false) {
             VStack(alignment: .leading, spacing: 0) {
-                EyebrowTag(text: "Step 10 of 11")
+                EyebrowTag(text: "Step \(ScreenProgress.signUpStep) of \(ScreenProgress.total)")
                     .phaseFadeUp(phase: phase, delay: 0.05)
 
                 Spacer().frame(height: 16)
