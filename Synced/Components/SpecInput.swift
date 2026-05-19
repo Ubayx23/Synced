@@ -11,6 +11,7 @@ struct SpecInput: View {
     var maxLength: Int? = nil
     var isValid: Bool? = nil          // nil = neutral, false = error, true = success
     var autoFocus: Bool = false
+    var isSecure: Bool = false        // true = masked password entry
 
     @FocusState private var focused: Bool
 
@@ -35,19 +36,25 @@ struct SpecInput: View {
             }
 
             HStack(spacing: 10) {
-                TextField("", text: $value, prompt: Text(placeholder).foregroundColor(SYN.textFaint))
-                    .font(.synText(16))
-                    .foregroundStyle(SYN.text)
-                    .keyboardType(keyboardType)
-                    .textContentType(textContentType)
-                    .textInputAutocapitalization(autocap)
-                    .autocorrectionDisabled(true)
-                    .focused($focused)
-                    .onChange(of: value) { _, newValue in
-                        if let maxLength, newValue.count > maxLength {
-                            value = String(newValue.prefix(maxLength))
-                        }
+                Group {
+                    if isSecure {
+                        SecureField("", text: $value, prompt: Text(placeholder).foregroundColor(SYN.textFaint))
+                    } else {
+                        TextField("", text: $value, prompt: Text(placeholder).foregroundColor(SYN.textFaint))
                     }
+                }
+                .font(.synText(16))
+                .foregroundStyle(SYN.text)
+                .keyboardType(keyboardType)
+                .textContentType(textContentType)
+                .textInputAutocapitalization(autocap)
+                .autocorrectionDisabled(true)
+                .focused($focused)
+                .onChange(of: value) { _, newValue in
+                    if let maxLength, newValue.count > maxLength {
+                        value = String(newValue.prefix(maxLength))
+                    }
+                }
 
                 if isValid == true {
                     Image(systemName: "checkmark.circle.fill")
