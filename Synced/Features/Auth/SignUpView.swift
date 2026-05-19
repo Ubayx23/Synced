@@ -34,7 +34,7 @@ struct SignUpView: View {
 
                 Spacer().frame(height: 10)
 
-                Text("we'll save your goals and check-ins.")
+                Text("we'll track your fuel, sessions, and the patterns nobody else does.")
                     .font(.synText(15))
                     .foregroundStyle(SYN.textDim)
                     .frame(maxWidth: 320, alignment: .leading)
@@ -189,19 +189,25 @@ struct SignUpView: View {
     }
 
     /// Writes the onboarding answers held in UserDefaults into the user's
-    /// profiles row. The profiles table has no age column, so userAge is not
-    /// persisted here.
+    /// profiles row. The handle_new_user() trigger already created the row at
+    /// signup, so this updates the existing row rather than inserting. The
+    /// profiles table has no age column, so userAge is not persisted here.
     private func writeProfile() async throws {
-        let userID = try await supabase.auth.session.user.id
+        guard let userID = supabase.auth.currentSession?.user.id else {
+            throw SignUpError.noSession
+        }
         let defaults = UserDefaults.standard
-        let row = ProfileRow(
-            id: userID,
+        let update = ProfileUpdate(
             username: defaults.string(forKey: "userName") ?? "",
             training_goal: defaults.string(forKey: "trainingGoal") ?? "",
-            training_frequency: defaults.object(forKey: "trainingFrequency") as? Int ?? 4,
-            sleep_baseline: defaults.object(forKey: "sleepBaseline") as? Double ?? 7.5
+            training_frequency: defaults.integer(forKey: "trainingFrequency"),
+            sleep_baseline: defaults.double(forKey: "sleepBaseline")
         )
-        try await supabase.from("profiles").upsert(row).execute()
+        try await supabase
+            .from("profiles")
+            .update(update)
+            .eq("id", value: userID.uuidString)
+            .execute()
     }
 
     // MARK: - Nonce helpers
@@ -230,14 +236,22 @@ struct SignUpView: View {
     }
 }
 
-// MARK: - Profile row
+// MARK: - Profile update
 
-private struct ProfileRow: Encodable {
-    let id: UUID
+private struct ProfileUpdate: Encodable {
     let username: String
     let training_goal: String
     let training_frequency: Int
     let sleep_baseline: Double
+}
+
+private enum SignUpError: LocalizedError {
+    case noSession
+    var errorDescription: String? {
+        switch self {
+        case .noSession: return "Your session expired. Please try again."
+        }
+    }
 }
 
 #Preview {
