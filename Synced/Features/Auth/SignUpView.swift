@@ -13,9 +13,25 @@ struct SignUpView: View {
     @State private var phase = 0
     @State private var email = ""
     @State private var password = ""
+    @State private var agreedToTerms = false
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var currentNonce: String?
+
+    private var hasMinLength: Bool { password.count >= 8 }
+    private var hasUppercase: Bool { password.contains(where: { $0.isUppercase }) }
+    private var hasLowercase: Bool { password.contains(where: { $0.isLowercase }) }
+    private var hasNumber: Bool { password.contains(where: { $0.isNumber }) }
+
+    private var passwordRulesPass: Bool {
+        hasMinLength && hasUppercase && hasLowercase && hasNumber
+    }
+
+    private var canSubmit: Bool {
+        !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && passwordRulesPass
+            && agreedToTerms
+    }
 
     var body: some View {
         ScreenShell(progress: ScreenProgress.signUp, onBack: onBack, ambient: false) {
@@ -66,22 +82,18 @@ struct SignUpView: View {
 
                 SpecInput(
                     value: $password,
-                    placeholder: "At least 6 characters",
+                    placeholder: "At least 8 characters",
                     label: "Password",
-                    textContentType: .newPassword,
+                    textContentType: .password,
                     autocap: .never,
                     isSecure: true
                 )
                 .phaseFadeUp(phase: phase, delay: 0.52)
 
-                Spacer().frame(height: 20)
+                Spacer().frame(height: 12)
 
-                HStack {
-                    Spacer()
-                    TextLinkButton(title: "create with email", action: submitEmail)
-                    Spacer()
-                }
-                .phaseFadeUp(phase: phase, delay: 0.58)
+                passwordRules
+                    .phaseFadeUp(phase: phase, delay: 0.58)
 
                 if let errorMessage {
                     Spacer().frame(height: 16)
@@ -95,14 +107,39 @@ struct SignUpView: View {
                 Spacer()
             }
         } cta: {
-            Text("by continuing you agree to our terms and privacy policy.")
-                .font(.synText(11))
-                .foregroundStyle(SYN.textFaint)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
+            VStack(spacing: 16) {
+                TermsAgreementRow(isChecked: agreedToTerms) {
+                    agreedToTerms.toggle()
+                }
+
+                PrimaryButton(title: "Create account", action: submitEmail)
+                    .opacity(canSubmit ? 1 : 0.5)
+                    .disabled(!canSubmit)
+                    .allowsHitTesting(canSubmit)
+            }
         }
         .disabled(isSubmitting)
         .task { withAnimation { phase = 1 } }
+    }
+
+    private var passwordRules: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            passwordRuleRow(label: "At least 8 characters", passes: hasMinLength)
+            passwordRuleRow(label: "One uppercase letter", passes: hasUppercase)
+            passwordRuleRow(label: "One lowercase letter", passes: hasLowercase)
+            passwordRuleRow(label: "One number", passes: hasNumber)
+        }
+    }
+
+    private func passwordRuleRow(label: String, passes: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: passes ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(passes ? SYN.green : SYN.textFaint)
+            Text(label)
+                .font(.synText(13))
+                .foregroundStyle(passes ? SYN.text : SYN.textDim)
+        }
     }
 
     // MARK: - Apple button
@@ -157,8 +194,8 @@ struct SignUpView: View {
 
     private func submitEmail() {
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanEmail.isEmpty, password.count >= 6 else {
-            errorMessage = "Enter an email and a password of at least 6 characters."
+        guard canSubmit else {
+            errorMessage = "Complete the form before continuing."
             return
         }
         submit {
@@ -233,6 +270,41 @@ struct SignUpView: View {
         SHA256.hash(data: Data(input.utf8))
             .map { String(format: "%02x", $0) }
             .joined()
+    }
+}
+
+// MARK: - Terms checkbox
+
+private struct TermsAgreementRow: View {
+    let isChecked: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(isChecked ? SYN.cyan : Color.clear)
+                    Circle()
+                        .stroke(isChecked ? SYN.cyan : SYN.border, lineWidth: 1.5)
+                    if isChecked {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Color.black)
+                    }
+                }
+                .frame(width: 22, height: 22)
+
+                Text("I agree to the terms and privacy policy")
+                    .font(.synText(13))
+                    .foregroundStyle(SYN.textDim)
+                    .multilineTextAlignment(.leading)
+
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
