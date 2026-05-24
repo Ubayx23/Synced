@@ -27,6 +27,34 @@ struct SignUpView: View {
         hasMinLength && hasUppercase && hasLowercase && hasNumber
     }
 
+    private var passwordStrengthScore: Int {
+        [hasMinLength, hasUppercase, hasLowercase, hasNumber].filter { $0 }.count
+    }
+
+    private var strengthColor: Color {
+        switch passwordStrengthScore {
+        case 4: return SYN.green
+        case 3: return SYN.amber
+        default: return SYN.red
+        }
+    }
+
+    private var strengthLabel: String {
+        switch passwordStrengthScore {
+        case 4: return "Strong"
+        case 3: return "Medium"
+        default: return "Weak"
+        }
+    }
+
+    private var strengthFillFraction: CGFloat {
+        switch passwordStrengthScore {
+        case 4: return 1.0
+        case 3: return 2.0 / 3.0
+        default: return 1.0 / 3.0
+        }
+    }
+
     private var canSubmit: Bool {
         !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && passwordRulesPass
@@ -92,7 +120,7 @@ struct SignUpView: View {
 
                 Spacer().frame(height: 12)
 
-                passwordRules
+                passwordStrength
                     .phaseFadeUp(phase: phase, delay: 0.58)
 
                 if let errorMessage {
@@ -122,23 +150,27 @@ struct SignUpView: View {
         .task { withAnimation { phase = 1 } }
     }
 
-    private var passwordRules: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            passwordRuleRow(label: "At least 8 characters", passes: hasMinLength)
-            passwordRuleRow(label: "One uppercase letter", passes: hasUppercase)
-            passwordRuleRow(label: "One lowercase letter", passes: hasLowercase)
-            passwordRuleRow(label: "One number", passes: hasNumber)
-        }
-    }
+    private var passwordStrength: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(SYN.border)
+                    Capsule()
+                        .fill(strengthColor)
+                        .frame(width: password.isEmpty ? 0 : proxy.size.width * strengthFillFraction)
+                        .animation(.easeOut(duration: 0.2), value: passwordStrengthScore)
+                        .animation(.easeOut(duration: 0.2), value: password.isEmpty)
+                }
+            }
+            .frame(height: 6)
 
-    private func passwordRuleRow(label: String, passes: Bool) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: passes ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(passes ? SYN.green : SYN.textFaint)
-            Text(label)
-                .font(.synText(13))
-                .foregroundStyle(passes ? SYN.text : SYN.textDim)
+            if !password.isEmpty {
+                Text(strengthLabel)
+                    .font(.synText(12))
+                    .foregroundStyle(strengthColor)
+                    .animation(.easeOut(duration: 0.2), value: passwordStrengthScore)
+            }
         }
     }
 
