@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct OnboardingFlow: View {
+    @Environment(SessionStore.self) private var session
     @State private var step: Int = {
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "-startStep"),
@@ -46,10 +47,10 @@ struct OnboardingFlow: View {
     private func next() { step = min(11, step + 1) }
     private func back() { step = max(1, step - 1) }
 
-    /// Tier-reveal CTA — terminal step. Flips the persistent flag and lets
-    /// `RootView` swap to `MainTabView`.
+    /// Tier-reveal CTA — terminal step. Flips the session phase so
+    /// `RootView` swaps to `MainTabView`.
     private func finish() {
-        UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+        session.markSignedIn()
     }
 }
 

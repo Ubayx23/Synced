@@ -11,7 +11,7 @@ private let mockTotalCheckins   = 12
 private let mockWeeksTracked    = 3
 
 struct ProfileView: View {
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+    @Environment(SessionStore.self) private var session
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -177,6 +177,15 @@ struct ProfileView: View {
             SettingsRow(icon: "bell.fill", iconColor: SYN.textDim, label: "Notifications", labelColor: SYN.text, action: {})
             SettingsRow(icon: "person.fill", iconColor: SYN.textDim, label: "Edit profile", labelColor: SYN.text, action: {})
             SettingsRow(
+                icon: "rectangle.portrait.and.arrow.right",
+                iconColor: SYN.textDim,
+                label: "Log out",
+                labelColor: SYN.text,
+                action: {
+                    Task { await session.signOut() }
+                }
+            )
+            SettingsRow(
                 icon: "arrow.right.circle.fill",
                 iconColor: Color(hex: "EF4444"),
                 label: "Reset onboarding",
@@ -193,6 +202,7 @@ struct ProfileView: View {
                     for key in keys {
                         UserDefaults.standard.removeObject(forKey: key)
                     }
+                    Task { await session.signOut() }
                 }
             )
         }
@@ -309,5 +319,6 @@ private struct SettingsRow: View {
 
 #Preview {
     ProfileView()
+        .environment(SessionStore())
         .preferredColorScheme(.dark)
 }

@@ -1,17 +1,17 @@
 import SwiftUI
 
 /// Top-level router: launch screen on cold start, then onboarding or tabs
-/// based on the persistent `hasCompletedOnboarding` flag.
+/// based on the live Supabase session held in `SessionStore`.
 struct RootView: View {
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+    @State private var session = SessionStore()
     @State private var showingLaunch: Bool = true
 
     var body: some View {
         ZStack {
-            if showingLaunch {
+            if showingLaunch || session.phase == .loading {
                 LaunchScreen { showingLaunch = false }
                     .transition(.opacity)
-            } else if hasCompletedOnboarding {
+            } else if session.phase == .signedIn {
                 MainTabView()
                     .transition(.opacity)
             } else {
@@ -19,8 +19,10 @@ struct RootView: View {
                     .transition(.opacity)
             }
         }
+        .environment(session)
+        .task { await session.bootstrap() }
         .animation(.easeInOut(duration: 0.35), value: showingLaunch)
-        .animation(.easeInOut(duration: 0.35), value: hasCompletedOnboarding)
+        .animation(.easeInOut(duration: 0.35), value: session.phase)
         .preferredColorScheme(.dark)
     }
 }
