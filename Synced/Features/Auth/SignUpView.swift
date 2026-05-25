@@ -10,6 +10,8 @@ struct SignUpView: View {
     var onBack: () -> Void
     var onSuccess: () -> Void
 
+    @Environment(OnboardingModel.self) private var model
+
     @State private var phase = 0
     @State private var email = ""
     @State private var password = ""
@@ -257,25 +259,26 @@ struct SignUpView: View {
         }
     }
 
-    /// Writes the onboarding answers held in UserDefaults into the user's
-    /// profiles row. The handle_new_user() trigger already created the row at
-    /// signup, so this updates the existing row rather than inserting. The
-    /// profiles table has no age column, so userAge is not persisted here.
+    /// Writes the live onboarding answers from the shared `OnboardingModel`
+    /// into the user's profiles row. The handle_new_user() trigger creates
+    /// the row at signup, but we upsert here so a missed trigger or repeated
+    /// run still lands the data. The profiles table has no age column, so
+    /// `model.age` is not persisted here.
     private func writeProfile() async throws {
-        guard let userID = supabase.auth.currentSession?.user.id else {
+        guard let user = supabase.auth.currentSession?.user else {
             throw SignUpError.noSession
         }
-        let defaults = UserDefaults.standard
-        let update = ProfileUpdate(
-            username: defaults.string(forKey: "userName") ?? "",
-            training_goal: defaults.string(forKey: "trainingGoal") ?? "",
-            training_frequency: defaults.integer(forKey: "trainingFrequency"),
-            sleep_baseline: defaults.double(forKey: "sleepBaseline")
+        let payload = ProfileUpsert(
+            id: user.id.uuidString,
+            email: user.email ?? "",
+            username: model.firstName,
+            training_goal: model.goal?.rawValue ?? "",
+            training_frequency: model.daysPerWeek,
+            sleep_baseline: model.sleepHours
         )
         try await supabase
             .from("profiles")
-            .update(update)
-            .eq("id", value: userID.uuidString)
+            .upsert(payload, onConflict: "id")
             .execute()
     }
 
@@ -342,7 +345,9 @@ private struct TermsAgreementRow: View {
 
 // MARK: - Profile update
 
-private struct ProfileUpdate: Encodable {
+private struct ProfileUpsert: Encodable {
+    let id: String
+    let email: String
     let username: String
     let training_goal: String
     let training_frequency: Int
@@ -362,6 +367,7 @@ private enum SignUpError: LocalizedError {
     ZStack {
         SYN.bg.ignoresSafeArea()
         SignUpView(onBack: {}, onSuccess: {})
+            .environment(OnboardingModel())
     }
     .preferredColorScheme(.dark)
 }
