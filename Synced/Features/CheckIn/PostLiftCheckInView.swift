@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 
 struct PostLiftCheckInView: View {
     @Binding var isComplete: Bool
@@ -11,6 +12,9 @@ struct PostLiftCheckInView: View {
     @State private var sessionNotes: String = ""
 
     @State private var ctaPulse: Double = 1.0
+
+    @State private var isSubmitting: Bool = false
+    @State private var errorMessage: String? = nil
 
     private let totalSteps = 2
 
@@ -27,6 +31,16 @@ struct PostLiftCheckInView: View {
 
                 stepContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.synText(13))
+                        .foregroundStyle(SYN.red)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, Spacing.pageH)
+                        .padding(.bottom, 12)
+                }
 
                 bottomCTA
                     .padding(.horizontal, Spacing.pageH)
@@ -100,7 +114,8 @@ struct PostLiftCheckInView: View {
     // MARK: - CTA
 
     private var ctaLabel: String {
-        currentStep == totalSteps ? "Save session" : "Continue"
+        if currentStep == totalSteps && isSubmitting { return "Saving..." }
+        return currentStep == totalSteps ? "Save session" : "Continue"
     }
 
     private var canAdvance: Bool {
@@ -111,10 +126,11 @@ struct PostLiftCheckInView: View {
     }
 
     private var bottomCTA: some View {
-        PrimaryButton(title: ctaLabel, action: advance)
-            .opacity(canAdvance ? 1 : 0.5)
-            .disabled(!canAdvance)
-            .allowsHitTesting(canAdvance)
+        let enabled = canAdvance && !isSubmitting
+        return PrimaryButton(title: ctaLabel, action: advance)
+            .opacity(enabled ? 1 : 0.5)
+            .disabled(!enabled)
+            .allowsHitTesting(enabled)
             .scaleEffect(currentStep == totalSteps ? ctaPulse : 1.0)
     }
 
@@ -127,7 +143,49 @@ struct PostLiftCheckInView: View {
     }
 
     private func handleComplete() {
-        isComplete = true
-        dismiss()
+        errorMessage = nil
+        isSubmitting = true
+
+        guard let userID = supabase.auth.currentSession?.user.id else {
+            errorMessage = "Your session expired. Please sign in again."
+            isSubmitting = false
+            return
+        }
+
+        let payload = PostLiftCheckInPayload(
+            user_id: userID.uuidString,
+            session_rating: sessionRating,
+            performance_vs_expectation: performanceVsExpectation,
+            session_duration: sessionDuration,
+            notes: sessionNotes
+        )
+
+        Task {
+            do {
+                try await supabase
+                    .from("post_lift_checkins")
+                    .insert(payload)
+                    .execute()
+                await MainActor.run {
+                    isComplete = true
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isSubmitting = false
+                }
+            }
+        }
     }
+}
+
+// MARK: - Insert payload
+
+private struct PostLiftCheckInPayload: Encodable {
+    let user_id: String
+    let session_rating: Int
+    let performance_vs_expectation: String
+    let session_duration: String
+    let notes: String
 }

@@ -1,18 +1,38 @@
 import SwiftUI
-
-private let mockUserName        = "Ubay"
-private let mockUserUsername    = "@ubaydev"
-private let mockJoinDate        = "April 2026"
-private let mockCurrentTier     = "Dialed"
-private let mockCurrentTierHex  = "22C55E"
-private let mockCurrentScore    = 67
-private let mockStreak          = 5
-private let mockTotalCheckins   = 12
-private let mockWeeksTracked    = 3
+import Supabase
 
 struct ProfileView: View {
+    @AppStorage("userName") private var userName: String = "there"
     @Environment(SessionStore.self) private var session
     @Environment(\.dismiss) private var dismiss
+
+    @State private var profileRow: ProfileRow? = nil
+    @State private var totalCheckIns: Int = 0
+    @State private var weeksTracked: Int = 1
+
+    private var currentTier: Tier { tierFromDB(profileRow?.tier) }
+    private var currentScore: Int { profileRow?.score ?? 0 }
+    private var displayName: String {
+        if let name = profileRow?.username, !name.isEmpty { return name }
+        return userName
+    }
+    private var avatarInitial: String {
+        if let name = profileRow?.username, let first = name.first {
+            return String(first).uppercased()
+        }
+        return "U"
+    }
+    private var handle: String? {
+        guard let name = profileRow?.username, !name.isEmpty else { return nil }
+        let stripped = name.lowercased().filter { !$0.isWhitespace }
+        return "@" + stripped
+    }
+    private var memberSince: String? {
+        guard let date = profileRow?.created_at else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: date)
+    }
 
     var body: some View {
         ZStack {
@@ -47,6 +67,7 @@ struct ProfileView: View {
                 .padding(.horizontal, Spacing.pageH)
             }
         }
+        .task { await loadFromSupabase() }
     }
 
     // MARK: - Close row
@@ -72,22 +93,26 @@ struct ProfileView: View {
             HStack(alignment: .center, spacing: 16) {
                 ZStack {
                     Circle().fill(SYN.surface)
-                    Text(String(mockUserName.prefix(1)).uppercased())
+                    Text(avatarInitial)
                         .font(.synDisplay(24, weight: .bold))
                         .foregroundStyle(SYN.text)
                 }
                 .frame(width: 56, height: 56)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(mockUserName)
+                    Text(displayName)
                         .font(.synDisplay(20, weight: .bold))
                         .foregroundStyle(SYN.text)
-                    Text(mockUserUsername)
-                        .font(.synText(14))
-                        .foregroundStyle(SYN.textDim)
-                    Text("Member since \(mockJoinDate)")
-                        .font(.synText(12))
-                        .foregroundStyle(SYN.textFaint)
+                    if let handle {
+                        Text(handle)
+                            .font(.synText(14))
+                            .foregroundStyle(SYN.textDim)
+                    }
+                    if let memberSince {
+                        Text("Member since \(memberSince)")
+                            .font(.synText(12))
+                            .foregroundStyle(SYN.textFaint)
+                    }
                 }
                 Spacer()
             }
@@ -106,12 +131,12 @@ struct ProfileView: View {
 
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(Color(hex: mockCurrentTierHex))
+                        .fill(currentTier.color)
                         .frame(width: 8, height: 8)
-                    Text(mockCurrentTier)
+                    Text(currentTier.displayName)
                         .font(.synDisplay(15, weight: .semibold))
-                        .foregroundStyle(Color(hex: mockCurrentTierHex))
-                    Text("\(mockCurrentScore)")
+                        .foregroundStyle(currentTier.color)
+                    Text("\(currentScore)")
                         .font(.synMono(15, weight: .bold))
                         .foregroundStyle(SYN.text)
                     Text("pts")
@@ -133,27 +158,28 @@ struct ProfileView: View {
     private var statsGrid: some View {
         let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
         return LazyVGrid(columns: cols, alignment: .leading, spacing: 12) {
-            StatCard(value: "\(mockStreak)",
+            StatCard(value: "\(profileRow?.streak ?? 0)",
                      valueFont: .synMono(28, weight: .bold),
                      valueColor: SYN.text,
                      label: "Day streak",
                      iconName: "flame.fill",
                      iconColor: SYN.amber)
-            StatCard(value: "\(mockTotalCheckins)",
+            StatCard(value: "\(totalCheckIns)",
                      valueFont: .synMono(28, weight: .bold),
                      valueColor: SYN.text,
                      label: "Total check-ins",
                      iconName: "checkmark.circle.fill",
                      iconColor: SYN.green)
-            StatCard(value: "\(mockWeeksTracked)",
+            StatCard(value: "\(weeksTracked)",
                      valueFont: .synMono(28, weight: .bold),
                      valueColor: SYN.text,
                      label: "Weeks tracked",
                      iconName: "calendar",
                      iconColor: SYN.textDim)
-            StatCard(value: mockCurrentTier,
+            // TODO: replace with real best tier when a tier_history table exists.
+            StatCard(value: currentTier.displayName,
                      valueFont: .synDisplay(20, weight: .semibold),
-                     valueColor: Color(hex: mockCurrentTierHex),
+                     valueColor: currentTier.color,
                      label: "Best tier",
                      iconName: "trophy.fill",
                      iconColor: SYN.amber)
@@ -164,9 +190,10 @@ struct ProfileView: View {
 
     private var tierHistory: some View {
         VStack(spacing: 8) {
-            TierHistoryRow(label: "This week",   labelColor: SYN.text,    tier: "Dialed", tierHex: "22C55E")
-            TierHistoryRow(label: "Last week",   labelColor: SYN.textDim, tier: "Active", tierHex: "FFFFFF")
-            TierHistoryRow(label: "2 weeks ago", labelColor: SYN.textDim, tier: "Active", tierHex: "FFFFFF")
+            TierHistoryRow(label: "This week",
+                           labelColor: SYN.text,
+                           tier: currentTier.displayName,
+                           tierColor: currentTier.color)
         }
     }
 
@@ -207,6 +234,67 @@ struct ProfileView: View {
             )
         }
     }
+
+    // MARK: - Supabase
+
+    private func tierFromDB(_ value: String?) -> Tier {
+        guard let value, !value.isEmpty else { return .active }
+        let lower = value.lowercased()
+        for tier in Tier.allCases {
+            if tier.rawValue.lowercased() == lower { return tier }
+            if tier.displayName.lowercased() == lower { return tier }
+        }
+        return .active
+    }
+
+    private func loadFromSupabase() async {
+        guard let userID = supabase.auth.currentSession?.user.id else { return }
+        let userIDString = userID.uuidString
+
+        async let profileRowsTask: [ProfileRow] = supabase
+            .from("profiles")
+            .select("username,tier,score,streak,created_at")
+            .eq("id", value: userIDString)
+            .limit(1)
+            .execute()
+            .value
+
+        async let countResponseTask = supabase
+            .from("pre_lift_checkins")
+            .select("id", head: true, count: .exact)
+            .eq("user_id", value: userIDString)
+            .execute()
+
+        let profileResult = try? await profileRowsTask
+        let countResult = try? await countResponseTask
+
+        let fetchedProfile = profileResult?.first
+        let fetchedCount = countResult?.count ?? 0
+
+        await MainActor.run {
+            if let profile = fetchedProfile {
+                profileRow = profile
+                if let createdAt = profile.created_at {
+                    let seconds = Date().timeIntervalSince(createdAt)
+                    let days = seconds / 86400.0
+                    weeksTracked = max(1, Int(ceil(days / 7.0)))
+                }
+            }
+            if countResult != nil {
+                totalCheckIns = fetchedCount
+            }
+        }
+    }
+}
+
+// MARK: - Supabase row model
+
+private struct ProfileRow: Decodable {
+    let username: String?
+    let tier: String?
+    let score: Int?
+    let streak: Int?
+    let created_at: Date?
 }
 
 // MARK: - Components
@@ -252,7 +340,7 @@ private struct TierHistoryRow: View {
     let label: String
     let labelColor: Color
     let tier: String
-    let tierHex: String
+    let tierColor: Color
 
     var body: some View {
         HStack {
@@ -261,10 +349,10 @@ private struct TierHistoryRow: View {
                 .foregroundStyle(labelColor)
             Spacer()
             HStack(spacing: 8) {
-                Circle().fill(Color(hex: tierHex)).frame(width: 8, height: 8)
+                Circle().fill(tierColor).frame(width: 8, height: 8)
                 Text(tier)
                     .font(.synDisplay(14, weight: .semibold))
-                    .foregroundStyle(Color(hex: tierHex))
+                    .foregroundStyle(tierColor)
             }
         }
         .padding(.horizontal, 16)

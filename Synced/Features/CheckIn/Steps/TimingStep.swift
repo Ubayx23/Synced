@@ -5,6 +5,19 @@ struct TimingStep: View {
     @Binding var liftTime: Date
     @Binding var hydration: String
     @Binding var preWorkout: String
+    @Binding var preWorkoutBrand: String
+    @Binding var preWorkoutCaffeineMg: Int
+
+    private var caffeineTextBinding: Binding<String> {
+        Binding<String>(
+            get: { preWorkoutCaffeineMg == 0 ? "" : "\(preWorkoutCaffeineMg)" },
+            set: { newValue in
+                let digits = newValue.filter { $0.isNumber }
+                let parsed = Int(digits) ?? 0
+                preWorkoutCaffeineMg = min(600, max(0, parsed))
+            }
+        )
+    }
 
     var body: some View {
         ScrollView {
@@ -162,7 +175,37 @@ struct TimingStep: View {
                 hydrationColumn
                 preWorkoutColumn
             }
+
+            if preWorkout == "Coffee" || preWorkout == "Pre-workout" {
+                VStack(alignment: .leading, spacing: 0) {
+                    Spacer().frame(height: 20)
+
+                    EyebrowText(text: "Caffeine details")
+                        .foregroundStyle(SYN.textFaint)
+
+                    Spacer().frame(height: 12)
+
+                    SpecInput(
+                        value: $preWorkoutBrand,
+                        placeholder: "e.g. C4, Celsius, Starbucks",
+                        label: "Brand",
+                        autocap: .words,
+                        maxLength: 40
+                    )
+
+                    Spacer().frame(height: 12)
+
+                    SpecInput(
+                        value: caffeineTextBinding,
+                        placeholder: "0",
+                        label: "Caffeine (mg)",
+                        keyboardType: .numberPad
+                    )
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
+        .animation(.easeInOut(duration: 0.25), value: preWorkout)
     }
 
     private var hydrationColumn: some View {

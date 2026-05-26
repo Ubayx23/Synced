@@ -15,7 +15,6 @@ struct SignUpView: View {
     @State private var phase = 0
     @State private var email = ""
     @State private var password = ""
-    @State private var agreedToTerms = false
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var currentNonce: String?
@@ -60,7 +59,6 @@ struct SignUpView: View {
     private var canSubmit: Bool {
         !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && passwordRulesPass
-            && agreedToTerms
     }
 
     var body: some View {
@@ -137,15 +135,18 @@ struct SignUpView: View {
                 Spacer()
             }
         } cta: {
-            VStack(spacing: 16) {
-                TermsAgreementRow(isChecked: agreedToTerms) {
-                    agreedToTerms.toggle()
-                }
-
+            VStack(spacing: 12) {
                 PrimaryButton(title: "Create account", action: submitEmail)
                     .opacity(canSubmit ? 1 : 0.5)
                     .disabled(!canSubmit)
                     .allowsHitTesting(canSubmit)
+
+                Text("by creating an account you agree to our [Terms](https://synced.page/terms) and [Privacy Policy](https://synced.page/privacy)")
+                    .font(.synText(11))
+                    .foregroundStyle(SYN.textFaint)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .tint(SYN.cyan)
             }
         }
         .disabled(isSubmitting)
@@ -305,41 +306,6 @@ struct SignUpView: View {
         SHA256.hash(data: Data(input.utf8))
             .map { String(format: "%02x", $0) }
             .joined()
-    }
-}
-
-// MARK: - Terms checkbox
-
-private struct TermsAgreementRow: View {
-    let isChecked: Bool
-    let onToggle: () -> Void
-
-    var body: some View {
-        Button(action: onToggle) {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(isChecked ? SYN.cyan : Color.clear)
-                    Circle()
-                        .stroke(isChecked ? SYN.cyan : SYN.border, lineWidth: 1.5)
-                    if isChecked {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Color.black)
-                    }
-                }
-                .frame(width: 22, height: 22)
-
-                Text("I agree to the terms and privacy policy")
-                    .font(.synText(13))
-                    .foregroundStyle(SYN.textDim)
-                    .multilineTextAlignment(.leading)
-
-                Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 
 struct PreLiftCheckInView: View {
     @Binding var isComplete: Bool
@@ -13,9 +14,14 @@ struct PreLiftCheckInView: View {
     @State private var liftTime: Date = Date()
     @State private var hydration: String = ""
     @State private var preWorkout: String = ""
+    @State private var preWorkoutBrand: String = ""
+    @State private var preWorkoutCaffeineMg: Int = 0
 
     @State private var ctaPulse: Double = 1.0
     @State private var draftLoaded: Bool = false
+
+    @State private var isSubmitting: Bool = false
+    @State private var errorMessage: String? = nil
 
     private let totalSteps = 4
 
@@ -32,6 +38,16 @@ struct PreLiftCheckInView: View {
 
                 stepContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.synText(13))
+                        .foregroundStyle(SYN.red)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, Spacing.pageH)
+                        .padding(.bottom, 12)
+                }
 
                 bottomCTA
                     .padding(.horizontal, Spacing.pageH)
@@ -64,6 +80,8 @@ struct PreLiftCheckInView: View {
         hasher.combine(liftTime)
         hasher.combine(hydration)
         hasher.combine(preWorkout)
+        hasher.combine(preWorkoutBrand)
+        hasher.combine(preWorkoutCaffeineMg)
         return hasher.finalize()
     }
 
@@ -112,7 +130,9 @@ struct PreLiftCheckInView: View {
                 default: TimingStep(mealTime: $mealTime,
                                     liftTime: $liftTime,
                                     hydration: $hydration,
-                                    preWorkout: $preWorkout)
+                                    preWorkout: $preWorkout,
+                                    preWorkoutBrand: $preWorkoutBrand,
+                                    preWorkoutCaffeineMg: $preWorkoutCaffeineMg)
                 }
             }
             .id(currentStep)
@@ -127,7 +147,8 @@ struct PreLiftCheckInView: View {
     // MARK: - CTA
 
     private var ctaLabel: String {
-        currentStep == totalSteps ? "Done, let's lift" : "Continue"
+        if currentStep == totalSteps && isSubmitting { return "Saving..." }
+        return currentStep == totalSteps ? "Done, let's lift" : "Continue"
     }
 
     private var canAdvance: Bool {
@@ -140,10 +161,11 @@ struct PreLiftCheckInView: View {
     }
 
     private var bottomCTA: some View {
-        PrimaryButton(title: ctaLabel, action: advance)
-            .opacity(canAdvance ? 1 : 0.5)
-            .disabled(!canAdvance)
-            .allowsHitTesting(canAdvance)
+        let enabled = canAdvance && !isSubmitting
+        return PrimaryButton(title: ctaLabel, action: advance)
+            .opacity(enabled ? 1 : 0.5)
+            .disabled(!enabled)
+            .allowsHitTesting(enabled)
             .scaleEffect(currentStep == totalSteps ? ctaPulse : 1.0)
     }
 
@@ -156,9 +178,51 @@ struct PreLiftCheckInView: View {
     }
 
     private func handleComplete() {
-        PreLiftDraftStore.clear()
-        isComplete = true
-        dismiss()
+        errorMessage = nil
+        isSubmitting = true
+
+        guard let userID = supabase.auth.currentSession?.user.id else {
+            errorMessage = "Your session expired. Please sign in again."
+            isSubmitting = false
+            return
+        }
+
+        let trimmedBrand = preWorkoutBrand.trimmingCharacters(in: .whitespacesAndNewlines)
+        let brandField: String? = trimmedBrand.isEmpty ? nil : trimmedBrand
+        let caffeineField: Int? = preWorkoutCaffeineMg == 0 ? nil : preWorkoutCaffeineMg
+
+        let payload = PreLiftCheckInPayload(
+            user_id: userID.uuidString,
+            muscle_groups: muscleGroups,
+            last_trained_gap: lastTrainedGap,
+            sleep_hours: sleepHours,
+            meal_items: mealItems,
+            meal_time: mealTime,
+            lift_time: liftTime,
+            hydration: hydration,
+            pre_workout: preWorkout,
+            pre_workout_brand: brandField,
+            pre_workout_caffeine_mg: caffeineField
+        )
+
+        Task {
+            do {
+                try await supabase
+                    .from("pre_lift_checkins")
+                    .insert(payload)
+                    .execute()
+                await MainActor.run {
+                    PreLiftDraftStore.clear()
+                    isComplete = true
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isSubmitting = false
+                }
+            }
+        }
     }
 
     // MARK: - Draft persistence
@@ -177,8 +241,10 @@ struct PreLiftCheckInView: View {
         mealItems      = draft.mealItems
         mealTime       = draft.mealTime
         liftTime       = draft.liftTime
-        hydration      = draft.hydration
-        preWorkout     = draft.preWorkout
+        hydration              = draft.hydration
+        preWorkout             = draft.preWorkout
+        preWorkoutBrand        = draft.preWorkoutBrand
+        preWorkoutCaffeineMg   = draft.preWorkoutCaffeineMg
     }
 
     private func saveDraft() {
@@ -194,10 +260,28 @@ struct PreLiftCheckInView: View {
                 liftTime: liftTime,
                 hydration: hydration,
                 preWorkout: preWorkout,
+                preWorkoutBrand: preWorkoutBrand,
+                preWorkoutCaffeineMg: preWorkoutCaffeineMg,
                 savedAt: Date()
             )
         )
     }
+}
+
+// MARK: - Insert payload
+
+private struct PreLiftCheckInPayload: Encodable {
+    let user_id: String
+    let muscle_groups: [String]
+    let last_trained_gap: String
+    let sleep_hours: Double
+    let meal_items: [FoodItem]
+    let meal_time: Date
+    let lift_time: Date
+    let hydration: String
+    let pre_workout: String
+    let pre_workout_brand: String?
+    let pre_workout_caffeine_mg: Int?
 }
 
 // MARK: - Draft model + storage
@@ -212,12 +296,14 @@ private struct PreLiftDraft: Codable {
     var liftTime: Date
     var hydration: String
     var preWorkout: String
+    var preWorkoutBrand: String
+    var preWorkoutCaffeineMg: Int
     var savedAt: Date
 }
 
 private enum PreLiftDraftStore {
     // Bumped on each schema/flow change so older drafts are silently ignored.
-    static let key = "preLiftDraft.v5"
+    static let key = "preLiftDraft.v6"
 
     /// Drafts written by an older schema fail to decode; we treat that as
     /// "no draft" and let the user start fresh.
