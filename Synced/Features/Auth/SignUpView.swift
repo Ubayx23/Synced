@@ -86,16 +86,6 @@ struct SignUpView: View {
 
                 Spacer().frame(height: 32)
 
-                appleButton
-                    .phaseFadeUp(phase: phase, delay: 0.34)
-
-                Spacer().frame(height: 20)
-
-                orDivider
-                    .phaseFadeUp(phase: phase, delay: 0.40)
-
-                Spacer().frame(height: 20)
-
                 SpecInput(
                     value: $email,
                     placeholder: "you@example.com",
@@ -177,7 +167,7 @@ struct SignUpView: View {
         }
     }
 
-    // MARK: - Apple button
+    // MARK: - Sign in with Apple (disabled until App Store pass)
 
     private var appleButton: some View {
         SignInWithAppleButton(.continue) { request in

@@ -176,7 +176,7 @@ struct TimingStep: View {
                 preWorkoutColumn
             }
 
-            if preWorkout == "Coffee" || preWorkout == "Pre-workout" {
+            if preWorkout == "Pre-workout" {
                 VStack(alignment: .leading, spacing: 0) {
                     Spacer().frame(height: 20)
 
@@ -222,9 +222,6 @@ struct TimingStep: View {
                 readinessTile(icon: "drop.fill", iconColor: SYN.red,   label: "Low",
                               isSelected: hydration == "Low",
                               onTap: { setHydration("Low") })
-                readinessTile(icon: "drop.fill", iconColor: SYN.cyan,  label: "Normal",
-                              isSelected: hydration == "Normal",
-                              onTap: { setHydration("Normal") })
                 readinessTile(icon: "drop.fill", iconColor: SYN.green, label: "High",
                               isSelected: hydration == "High",
                               onTap: { setHydration("High") })
@@ -243,13 +240,10 @@ struct TimingStep: View {
             Spacer().frame(height: 8)
 
             VStack(spacing: 8) {
-                readinessTile(icon: "xmark.circle.fill",   iconColor: SYN.textFaint, label: "None",
+                readinessTile(icon: "xmark.circle.fill", iconColor: SYN.textFaint, label: "None",
                               isSelected: preWorkout == "None",
                               onTap: { setPreWorkout("None") })
-                readinessTile(icon: "cup.and.saucer.fill", iconColor: SYN.amber,     label: "Coffee",
-                              isSelected: preWorkout == "Coffee",
-                              onTap: { setPreWorkout("Coffee") })
-                readinessTile(icon: "bolt.fill",           iconColor: SYN.cyan,      label: "Pre-workout",
+                readinessTile(icon: "bolt.fill",         iconColor: SYN.cyan,      label: "Pre-workout",
                               isSelected: preWorkout == "Pre-workout",
                               onTap: { setPreWorkout("Pre-workout") })
             }

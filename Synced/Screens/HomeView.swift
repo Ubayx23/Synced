@@ -296,18 +296,17 @@ struct HomeView: View {
         let postResult = try? await postRowsTask
         let lastResult = try? await lastRatingTask
 
+        let newProfile = profileResult?.first ?? profileRow
+        let newTodayHasPreLift = preResult.map { !$0.isEmpty } ?? todayHasPreLift
+        let newTodayHasPostLift = postResult.map { !$0.isEmpty } ?? todayHasPostLift
+        let newLastSessionRating = lastResult.map { $0.first?.session_rating } ?? lastSessionRating
+
         await MainActor.run {
-            if let profile = profileResult?.first {
-                profileRow = profile
-            }
-            if let pre = preResult {
-                todayHasPreLift = !pre.isEmpty
-            }
-            if let post = postResult {
-                todayHasPostLift = !post.isEmpty
-            }
-            if let last = lastResult {
-                lastSessionRating = last.first?.session_rating
+            withAnimation(.easeOut(duration: 0.6)) {
+                self.profileRow        = newProfile
+                self.todayHasPreLift   = newTodayHasPreLift
+                self.todayHasPostLift  = newTodayHasPostLift
+                self.lastSessionRating = newLastSessionRating
             }
         }
     }
