@@ -5,6 +5,19 @@ struct TimingStep: View {
     @Binding var liftTime: Date
     @Binding var hydration: String
     @Binding var preWorkout: String
+    @Binding var preWorkoutBrand: String
+    @Binding var preWorkoutCaffeineMg: Int
+
+    private var caffeineTextBinding: Binding<String> {
+        Binding<String>(
+            get: { preWorkoutCaffeineMg == 0 ? "" : "\(preWorkoutCaffeineMg)" },
+            set: { newValue in
+                let digits = newValue.filter { $0.isNumber }
+                let parsed = Int(digits) ?? 0
+                preWorkoutCaffeineMg = min(600, max(0, parsed))
+            }
+        )
+    }
 
     var body: some View {
         ScrollView {
@@ -162,7 +175,37 @@ struct TimingStep: View {
                 hydrationColumn
                 preWorkoutColumn
             }
+
+            if preWorkout == "Pre-workout" {
+                VStack(alignment: .leading, spacing: 0) {
+                    Spacer().frame(height: 20)
+
+                    EyebrowText(text: "Caffeine details")
+                        .foregroundStyle(SYN.textFaint)
+
+                    Spacer().frame(height: 12)
+
+                    SpecInput(
+                        value: $preWorkoutBrand,
+                        placeholder: "e.g. C4, Celsius, Starbucks",
+                        label: "Brand",
+                        autocap: .words,
+                        maxLength: 40
+                    )
+
+                    Spacer().frame(height: 12)
+
+                    SpecInput(
+                        value: caffeineTextBinding,
+                        placeholder: "0",
+                        label: "Caffeine (mg)",
+                        keyboardType: .numberPad
+                    )
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
+        .animation(.easeInOut(duration: 0.25), value: preWorkout)
     }
 
     private var hydrationColumn: some View {
@@ -179,9 +222,6 @@ struct TimingStep: View {
                 readinessTile(icon: "drop.fill", iconColor: SYN.red,   label: "Low",
                               isSelected: hydration == "Low",
                               onTap: { setHydration("Low") })
-                readinessTile(icon: "drop.fill", iconColor: SYN.cyan,  label: "Normal",
-                              isSelected: hydration == "Normal",
-                              onTap: { setHydration("Normal") })
                 readinessTile(icon: "drop.fill", iconColor: SYN.green, label: "High",
                               isSelected: hydration == "High",
                               onTap: { setHydration("High") })
@@ -200,13 +240,10 @@ struct TimingStep: View {
             Spacer().frame(height: 8)
 
             VStack(spacing: 8) {
-                readinessTile(icon: "xmark.circle.fill",   iconColor: SYN.textFaint, label: "None",
+                readinessTile(icon: "xmark.circle.fill", iconColor: SYN.textFaint, label: "None",
                               isSelected: preWorkout == "None",
                               onTap: { setPreWorkout("None") })
-                readinessTile(icon: "cup.and.saucer.fill", iconColor: SYN.amber,     label: "Coffee",
-                              isSelected: preWorkout == "Coffee",
-                              onTap: { setPreWorkout("Coffee") })
-                readinessTile(icon: "bolt.fill",           iconColor: SYN.cyan,      label: "Pre-workout",
+                readinessTile(icon: "bolt.fill",         iconColor: SYN.cyan,      label: "Pre-workout",
                               isSelected: preWorkout == "Pre-workout",
                               onTap: { setPreWorkout("Pre-workout") })
             }

@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 
 struct PostLiftCheckInView: View {
     @Binding var isComplete: Bool
@@ -11,6 +12,9 @@ struct PostLiftCheckInView: View {
     @State private var sessionNotes: String = ""
 
     @State private var ctaPulse: Double = 1.0
+
+    @State private var isSubmitting: Bool = false
+    @State private var errorMessage: String? = nil
 
     private let totalSteps = 2
 
@@ -27,6 +31,16 @@ struct PostLiftCheckInView: View {
 
                 stepContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.synText(13))
+                        .foregroundStyle(SYN.red)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, Spacing.pageH)
+                        .padding(.bottom, 12)
+                }
 
                 bottomCTA
                     .padding(.horizontal, Spacing.pageH)
@@ -100,7 +114,8 @@ struct PostLiftCheckInView: View {
     // MARK: - CTA
 
     private var ctaLabel: String {
-        currentStep == totalSteps ? "Save session" : "Continue"
+        if currentStep == totalSteps && isSubmitting { return "Saving..." }
+        return currentStep == totalSteps ? "Save session" : "Continue"
     }
 
     private var canAdvance: Bool {
@@ -111,10 +126,11 @@ struct PostLiftCheckInView: View {
     }
 
     private var bottomCTA: some View {
-        PrimaryButton(title: ctaLabel, action: advance)
-            .opacity(canAdvance ? 1 : 0.5)
-            .disabled(!canAdvance)
-            .allowsHitTesting(canAdvance)
+        let enabled = canAdvance && !isSubmitting
+        return PrimaryButton(title: ctaLabel, action: advance)
+            .opacity(enabled ? 1 : 0.5)
+            .disabled(!enabled)
+            .allowsHitTesting(enabled)
             .scaleEffect(currentStep == totalSteps ? ctaPulse : 1.0)
     }
 
@@ -127,7 +143,128 @@ struct PostLiftCheckInView: View {
     }
 
     private func handleComplete() {
-        isComplete = true
-        dismiss()
+        errorMessage = nil
+        isSubmitting = true
+
+        guard let userID = supabase.auth.currentSession?.user.id else {
+            errorMessage = "Your session expired. Please sign in again."
+            isSubmitting = false
+            return
+        }
+
+        let payload = PostLiftCheckInPayload(
+            user_id: userID.uuidString,
+            session_rating: sessionRating,
+            performance_vs_expectation: performanceVsExpectation,
+            session_duration: sessionDuration,
+            notes: sessionNotes
+        )
+
+        Task {
+            do {
+                try await supabase
+                    .from("post_lift_checkins")
+                    .insert(payload)
+                    .execute()
+
+                await rollupProfile(userID: userID)
+
+                await MainActor.run {
+                    isComplete = true
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isSubmitting = false
+                }
+            }
+        }
     }
+
+    // MARK: - Profile rollup
+
+    private func rollupProfile(userID: UUID) async {
+        struct CountRow: Decodable { let id: String }
+        let weekAgo = ISO8601DateFormatter().string(
+            from: Date().addingTimeInterval(-7 * 24 * 3600)
+        )
+
+        do {
+            let preRows: [CountRow] = try await supabase
+                .from("pre_lift_checkins")
+                .select("id")
+                .eq("user_id", value: userID.uuidString)
+                .gte("created_at", value: weekAgo)
+                .execute()
+                .value
+            let postRows: [CountRow] = try await supabase
+                .from("post_lift_checkins")
+                .select("id")
+                .eq("user_id", value: userID.uuidString)
+                .gte("created_at", value: weekAgo)
+                .execute()
+                .value
+
+            let weeklyScore = min(100, 40 + 5 * preRows.count + 5 * postRows.count)
+            let tier = Tier.allCases.first { $0.range.contains(weeklyScore) } ?? .active
+
+            struct ProfileRollup: Encodable {
+                let score: Int
+                let tier: String
+            }
+            try await supabase
+                .from("profiles")
+                .update(ProfileRollup(score: weeklyScore, tier: tier.displayName))
+                .eq("id", value: userID.uuidString)
+                .execute()
+
+            struct StreakRow: Decodable { let streak: Int? }
+            let streakRows: [StreakRow] = try await supabase
+                .from("profiles")
+                .select("streak")
+                .eq("id", value: userID.uuidString)
+                .limit(1)
+                .execute()
+                .value
+            let streak = streakRows.first?.streak ?? 0
+
+            struct LeaderboardUpsert: Encodable {
+                let user_id: String
+                let display_name: String
+                let tier: String
+                let score: Int
+                let streak: Int
+            }
+            let stored = UserDefaults.standard.string(forKey: "userName")?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let displayName = stored.isEmpty ? "User" : stored
+
+            try await supabase
+                .from("leaderboard_entries")
+                .upsert(
+                    LeaderboardUpsert(
+                        user_id: userID.uuidString,
+                        display_name: displayName,
+                        tier: tier.displayName,
+                        score: weeklyScore,
+                        streak: streak
+                    ),
+                    onConflict: "user_id"
+                )
+                .execute()
+        } catch {
+            // already saved; swallow silently
+        }
+    }
+}
+
+// MARK: - Insert payload
+
+private struct PostLiftCheckInPayload: Encodable {
+    let user_id: String
+    let session_rating: Int
+    let performance_vs_expectation: String
+    let session_duration: String
+    let notes: String
 }

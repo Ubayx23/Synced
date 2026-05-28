@@ -1,20 +1,28 @@
 import SwiftUI
-
-// Mock data — Supabase wiring lands on a future branch.
-private let mockTier: Tier  = .dialed
-private let mockStreak      = 5
+import Supabase
 
 struct HomeView: View {
     @AppStorage("userName")           private var userName: String = "there"
     @AppStorage("trainingFrequency")  private var trainingFrequency: Int = 4
     @AppStorage("sleepBaseline")      private var sleepBaseline: Double = 7.5
 
-    @State private var displayScore: Int = 67
+    @State private var profileRow: ProfileRow? = nil
+    @State private var todayHasPreLift: Bool = false
+    @State private var todayHasPostLift: Bool = false
+    @State private var lastSessionRating: Int? = nil
+
     @State private var preLiftDone: Bool = false
     @State private var postLiftDone: Bool = false
     @State private var showingPreLift: Bool = false
     @State private var showingPostLift: Bool = false
     @State private var showingProfile: Bool = false
+
+    private var currentTier: Tier { tierFromDB(profileRow?.tier) }
+    private var currentScore: Int { profileRow?.score ?? 0 }
+    private var displayName: String {
+        if let name = profileRow?.username, !name.isEmpty { return name }
+        return userName
+    }
 
     var body: some View {
         ZStack {
@@ -60,20 +68,17 @@ struct HomeView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+        .task { await loadFromSupabase() }
         .onChange(of: preLiftDone) { _, new in
             guard new else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
-                    displayScore = 71
-                }
+                Task { await loadFromSupabase() }
             }
         }
         .onChange(of: postLiftDone) { _, new in
             guard new else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
-                    displayScore = 78
-                }
+                Task { await loadFromSupabase() }
             }
         }
     }
@@ -86,7 +91,7 @@ struct HomeView: View {
                 Text("Good morning,")
                     .font(.synText(14))
                     .foregroundStyle(SYN.textDim)
-                Text(userName)
+                Text(displayName)
                     .font(.synDisplay(20, weight: .bold))
                     .foregroundStyle(SYN.text)
             }
@@ -98,7 +103,7 @@ struct HomeView: View {
                     Image(systemName: "flame.fill")
                         .font(.system(size: 16))
                         .foregroundStyle(SYN.amber)
-                    Text("\(mockStreak)")
+                    Text("\(profileRow?.streak ?? 0)")
                         .font(.synMono(16, weight: .bold))
                         .foregroundStyle(SYN.text)
                     Text("day streak")
@@ -127,35 +132,35 @@ struct HomeView: View {
 
             Spacer().frame(height: 16)
 
-            Text("\(displayScore)")
+            Text("\(currentScore)")
                 .font(.synMono(80, weight: .bold))
                 .kerning(-2)
-                .foregroundStyle(mockTier.color)
-                .shadow(color: mockTier.color.opacity(0.25), radius: 16)
+                .foregroundStyle(currentTier.color)
+                .shadow(color: currentTier.color.opacity(0.25), radius: 16)
                 .contentTransition(.numericText())
 
             Spacer().frame(height: 8)
 
             HStack(spacing: 8) {
                 Circle()
-                    .fill(mockTier.color)
+                    .fill(currentTier.color)
                     .frame(width: 8, height: 8)
-                Text(mockTier.displayName)
+                Text(currentTier.displayName)
                     .font(.synDisplay(17, weight: .semibold))
-                    .foregroundStyle(mockTier.color)
+                    .foregroundStyle(currentTier.color)
             }
 
             Spacer().frame(height: 12)
 
-            if let next = mockTier.next {
-                let pointsToNext = max(0, next.range.lowerBound - displayScore)
+            if let next = currentTier.next {
+                let pointsToNext = max(0, next.range.lowerBound - currentScore)
                 Text("\(pointsToNext) points to \(next.displayName)")
                     .font(.synText(13))
                     .foregroundStyle(SYN.textDim)
 
                 Spacer().frame(height: 16)
 
-                tierProgressBar(score: displayScore, tier: mockTier, next: next)
+                tierProgressBar(score: currentScore, tier: currentTier, next: next)
             } else {
                 Text("Top tier reached")
                     .font(.synText(13))
@@ -204,7 +209,7 @@ struct HomeView: View {
                 CheckInCard(
                     title: "Pre-lift check-in",
                     subtitle: "Sleep, energy, nutrition",
-                    state: preLiftDone ? .done : .active,
+                    state: (todayHasPreLift || preLiftDone) ? .done : .active,
                     onStart: { showingPreLift = true }
                 )
                 CheckInCard(
@@ -218,8 +223,9 @@ struct HomeView: View {
     }
 
     private var postLiftState: CheckInCard.CheckState {
-        if postLiftDone { return .done }
-        if !preLiftDone { return .locked }
+        let preDone = todayHasPreLift || preLiftDone
+        if !preDone { return .locked }
+        if todayHasPostLift || postLiftDone { return .done }
         return .active
     }
 
@@ -229,9 +235,98 @@ struct HomeView: View {
         HStack(spacing: 8) {
             StatPill(value: String(format: "%.1f", sleepBaseline), label: "hrs sleep")
             StatPill(value: "\(trainingFrequency)",                label: "days/week")
-            LastSessionPill(rating: postLiftDone ? 4 : nil)
+            LastSessionPill(rating: lastSessionRating)
         }
     }
+
+    // MARK: - Supabase
+
+    private func tierFromDB(_ value: String?) -> Tier {
+        guard let value, !value.isEmpty else { return .active }
+        let lower = value.lowercased()
+        for tier in Tier.allCases {
+            if tier.rawValue.lowercased() == lower { return tier }
+            if tier.displayName.lowercased() == lower { return tier }
+        }
+        return .active
+    }
+
+    private func loadFromSupabase() async {
+        guard let userID = supabase.auth.currentSession?.user.id else { return }
+        let userIDString = userID.uuidString
+        let isoStartOfDay = ISO8601DateFormatter()
+            .string(from: Calendar.current.startOfDay(for: Date()))
+
+        async let profileRowsTask: [ProfileRow] = supabase
+            .from("profiles")
+            .select("username,tier,score,streak")
+            .eq("id", value: userIDString)
+            .limit(1)
+            .execute()
+            .value
+
+        async let preRowsTask: [HomeIdRow] = supabase
+            .from("pre_lift_checkins")
+            .select("id")
+            .eq("user_id", value: userIDString)
+            .gte("created_at", value: isoStartOfDay)
+            .limit(1)
+            .execute()
+            .value
+
+        async let postRowsTask: [HomeIdRow] = supabase
+            .from("post_lift_checkins")
+            .select("id")
+            .eq("user_id", value: userIDString)
+            .gte("created_at", value: isoStartOfDay)
+            .limit(1)
+            .execute()
+            .value
+
+        async let lastRatingTask: [HomeRatingRow] = supabase
+            .from("post_lift_checkins")
+            .select("session_rating")
+            .order("created_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+
+        let profileResult = try? await profileRowsTask
+        let preResult = try? await preRowsTask
+        let postResult = try? await postRowsTask
+        let lastResult = try? await lastRatingTask
+
+        let newProfile = profileResult?.first ?? profileRow
+        let newTodayHasPreLift = preResult.map { !$0.isEmpty } ?? todayHasPreLift
+        let newTodayHasPostLift = postResult.map { !$0.isEmpty } ?? todayHasPostLift
+        let newLastSessionRating = lastResult.map { $0.first?.session_rating } ?? lastSessionRating
+
+        await MainActor.run {
+            withAnimation(.easeOut(duration: 0.6)) {
+                self.profileRow        = newProfile
+                self.todayHasPreLift   = newTodayHasPreLift
+                self.todayHasPostLift  = newTodayHasPostLift
+                self.lastSessionRating = newLastSessionRating
+            }
+        }
+    }
+}
+
+// MARK: - Supabase row models
+
+private struct ProfileRow: Decodable {
+    let username: String?
+    let tier: String?
+    let score: Int?
+    let streak: Int?
+}
+
+private struct HomeIdRow: Decodable {
+    let id: String
+}
+
+private struct HomeRatingRow: Decodable {
+    let session_rating: Int
 }
 
 // MARK: - Check-in card

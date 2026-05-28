@@ -3,6 +3,7 @@ import SwiftUI
 struct S1Welcome: View {
     var onNext: () -> Void
     @State private var phase = 0
+    @State private var showingSignIn = false
 
     var body: some View {
         ZStack {
@@ -46,10 +47,15 @@ struct S1Welcome: View {
         } cta: {
             VStack(spacing: 12) {
                 PrimaryButton(title: "Get Started", action: onNext)
-                TextLinkButton(title: "I already have an account") { /* future: sign-in */ }
+                TextLinkButton(title: "I already have an account") {
+                    showingSignIn = true
+                }
             }
             .phaseFadeUp(phase: phase, delay: 0.25)
         }
         .task { withAnimation(.easeOut(duration: 0.4)) { phase = 1 } }
+        .fullScreenCover(isPresented: $showingSignIn) {
+            SignInView(onClose: { showingSignIn = false })
+        }
     }
 }
