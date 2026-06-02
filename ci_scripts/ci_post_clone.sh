@@ -3,4 +3,5 @@ set -e
 brew install xcodegen
 cd "$CI_PRIMARY_REPOSITORY_PATH"
 xcodegen generate
-xcodebuild -resolvePackageDependencies -project Synced.xcodeproj -scheme Synced
+mkdir -p Synced.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+cp Package.resolved Synced.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
