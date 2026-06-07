@@ -141,10 +141,15 @@ private struct LeaderboardRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
-            Text("\(friend.rank)")
-                .font(.synMono(18, weight: .bold))
-                .foregroundStyle(rankColor)
-                .frame(width: 24, alignment: .leading)
+            HStack(spacing: 4) {
+                if friend.rank == 1 {
+                    GlowDot(color: SYN.amber, diameter: 8)
+                }
+                Text("\(friend.rank)")
+                    .font(.synMono(18, weight: .bold))
+                    .foregroundStyle(rankColor)
+            }
+            .frame(width: 32, alignment: .leading)
 
             Spacer().frame(width: 16)
 

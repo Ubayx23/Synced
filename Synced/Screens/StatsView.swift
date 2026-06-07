@@ -55,8 +55,16 @@ struct StatsView: View {
     @State private var selectedSession: SessionRecord? = nil
     @State private var insights: [InsightCard] = []
 
+    private var unlockThreshold: Int {
+        #if DEBUG
+        return 1
+        #else
+        return 7
+        #endif
+    }
+
     private var isUnlocked: Bool {
-        if let count = preLiftCount { return count >= 7 }
+        if let count = preLiftCount { return count >= unlockThreshold }
         return false
     }
 
@@ -164,7 +172,7 @@ struct StatsView: View {
 
                 Spacer().frame(height: 24)
 
-                Text("\(preLiftCount ?? 0) of 7 check-ins logged")
+                Text("\(preLiftCount ?? 0) of \(unlockThreshold) check-ins logged")
                     .font(.synMono(15))
                     .foregroundStyle(SYN.text)
 

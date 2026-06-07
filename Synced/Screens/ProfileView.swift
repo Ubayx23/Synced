@@ -130,9 +130,7 @@ struct ProfileView: View {
                 Spacer()
 
                 HStack(spacing: 8) {
-                    Circle()
-                        .fill(currentTier.color)
-                        .frame(width: 8, height: 8)
+                    GlowDot(color: currentTier.color, diameter: 10)
                     Text(currentTier.displayName)
                         .font(.synDisplay(15, weight: .semibold))
                         .foregroundStyle(currentTier.color)
@@ -349,7 +347,7 @@ private struct TierHistoryRow: View {
                 .foregroundStyle(labelColor)
             Spacer()
             HStack(spacing: 8) {
-                Circle().fill(tierColor).frame(width: 8, height: 8)
+                GlowDot(color: tierColor, diameter: 10)
                 Text(tier)
                     .font(.synDisplay(14, weight: .semibold))
                     .foregroundStyle(tierColor)
