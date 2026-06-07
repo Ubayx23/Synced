@@ -18,6 +18,7 @@ struct HomeView: View {
     @State private var showingPreLift: Bool = false
     @State private var showingPostLift: Bool = false
     @State private var showingProfile: Bool = false
+    @State private var showingCalendar: Bool = false
 
     @State private var scoreBreath: CGFloat = 1.0
     @State private var shimmerProgress: CGFloat = 0
@@ -77,6 +78,10 @@ struct HomeView: View {
         }
         .sheet(item: $selectedLastSession) { session in
             SessionDetailView(session: session)
+                .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showingCalendar) {
+            CheckInCalendarSheet()
                 .presentationDetents([.large])
         }
         .task {
@@ -269,10 +274,13 @@ struct HomeView: View {
                 value: String(format: "%.1f", lastSession?.sleepHours ?? sleepBaseline),
                 label: "hrs sleep"
             )
-            StatPill(
-                value: "\(liftsThisWeek)/\(weeklyTarget)",
-                label: "this week"
-            )
+            Button(action: { showingCalendar = true }) {
+                StatPill(
+                    value: "\(liftsThisWeek)/\(weeklyTarget)",
+                    label: "this week"
+                )
+            }
+            .buttonStyle(.plain)
             Button(action: { selectedLastSession = lastSession }) {
                 LastSessionPill(rating: lastSessionRating)
             }
