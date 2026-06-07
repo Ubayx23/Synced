@@ -10,12 +10,19 @@ struct HomeView: View {
     @State private var todayHasPreLift: Bool = false
     @State private var todayHasPostLift: Bool = false
     @State private var lastSessionRating: Int? = nil
+    @State private var lastSession: SessionRecord? = nil
+    @State private var selectedLastSession: SessionRecord? = nil
 
     @State private var preLiftDone: Bool = false
     @State private var postLiftDone: Bool = false
     @State private var showingPreLift: Bool = false
     @State private var showingPostLift: Bool = false
     @State private var showingProfile: Bool = false
+
+    @State private var scoreBreath: CGFloat = 1.0
+    @State private var shimmerProgress: CGFloat = 0
+    @State private var liftsThisWeek: Int = 0
+    @State private var weeklyTarget: Int = 4
 
     private var currentTier: Tier { tierFromDB(profileRow?.tier) }
     private var currentScore: Int { profileRow?.score ?? 0 }
@@ -68,7 +75,19 @@ struct HomeView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
-        .task { await loadFromSupabase() }
+        .sheet(item: $selectedLastSession) { session in
+            SessionDetailView(session: session)
+                .presentationDetents([.large])
+        }
+        .task {
+            await loadFromSupabase()
+            withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) {
+                scoreBreath = 1.02
+            }
+            withAnimation(.linear(duration: 3.2).repeatForever(autoreverses: false)) {
+                shimmerProgress = 1
+            }
+        }
         .onChange(of: preLiftDone) { _, new in
             guard new else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -101,8 +120,10 @@ struct HomeView: View {
             HStack(spacing: 16) {
                 HStack(spacing: 6) {
                     Image(systemName: "flame.fill")
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(SYN.red, SYN.amber)
                         .font(.system(size: 16))
-                        .foregroundStyle(SYN.amber)
+                        .shadow(color: SYN.amber.opacity(0.6), radius: 6)
                     Text("\(profileRow?.streak ?? 0)")
                         .font(.synMono(16, weight: .bold))
                         .foregroundStyle(SYN.text)
@@ -136,15 +157,15 @@ struct HomeView: View {
                 .font(.synMono(80, weight: .bold))
                 .kerning(-2)
                 .foregroundStyle(currentTier.color)
-                .shadow(color: currentTier.color.opacity(0.25), radius: 16)
+                .scaleEffect(scoreBreath)
+                .shadow(color: currentTier.color.opacity(0.25 + (Double(scoreBreath) - 1.0) * 10),
+                        radius: 16 + (scoreBreath - 1.0) * 100)
                 .contentTransition(.numericText())
 
             Spacer().frame(height: 8)
 
             HStack(spacing: 8) {
-                Circle()
-                    .fill(currentTier.color)
-                    .frame(width: 8, height: 8)
+                GlowDot(color: currentTier.color, diameter: 10)
                 Text(currentTier.displayName)
                     .font(.synDisplay(17, weight: .semibold))
                     .foregroundStyle(currentTier.color)
@@ -190,6 +211,17 @@ struct HomeView: View {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(tier.color)
                     .frame(width: geo.size.width * min(1, max(0, progress)))
+                    .overlay(
+                        GeometryReader { geo in
+                            LinearGradient(
+                                colors: [.clear, .white.opacity(0.45), .clear],
+                                startPoint: .leading, endPoint: .trailing
+                            )
+                            .frame(width: geo.size.width * 0.3)
+                            .offset(x: -geo.size.width * 0.3 + (geo.size.width * 1.3) * shimmerProgress)
+                        }
+                        .mask(RoundedRectangle(cornerRadius: 2))
+                    )
             }
         }
         .frame(height: 4)
@@ -233,9 +265,19 @@ struct HomeView: View {
 
     private var quickStatsRow: some View {
         HStack(spacing: 8) {
-            StatPill(value: String(format: "%.1f", sleepBaseline), label: "hrs sleep")
-            StatPill(value: "\(trainingFrequency)",                label: "days/week")
-            LastSessionPill(rating: lastSessionRating)
+            StatPill(
+                value: String(format: "%.1f", lastSession?.sleepHours ?? sleepBaseline),
+                label: "hrs sleep"
+            )
+            StatPill(
+                value: "\(liftsThisWeek)/\(weeklyTarget)",
+                label: "this week"
+            )
+            Button(action: { selectedLastSession = lastSession }) {
+                LastSessionPill(rating: lastSessionRating)
+            }
+            .buttonStyle(.plain)
+            .disabled(lastSession == nil)
         }
     }
 
@@ -256,6 +298,8 @@ struct HomeView: View {
         let userIDString = userID.uuidString
         let isoStartOfDay = ISO8601DateFormatter()
             .string(from: Calendar.current.startOfDay(for: Date()))
+        let weekAgo = ISO8601DateFormatter()
+            .string(from: Date().addingTimeInterval(-7 * 24 * 3600))
 
         async let profileRowsTask: [ProfileRow] = supabase
             .from("profiles")
@@ -291,15 +335,78 @@ struct HomeView: View {
             .execute()
             .value
 
+        async let lastPostTask: [LastPostRow] = supabase
+            .from("post_lift_checkins")
+            .select("*")
+            .eq("user_id", value: userIDString)
+            .order("created_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+
+        async let preWeekTask: [HomeIdRow] = supabase
+            .from("pre_lift_checkins")
+            .select("id")
+            .eq("user_id", value: userIDString)
+            .gte("created_at", value: weekAgo)
+            .execute()
+            .value
+
         let profileResult = try? await profileRowsTask
         let preResult = try? await preRowsTask
         let postResult = try? await postRowsTask
         let lastResult = try? await lastRatingTask
+        let lastPostResult = try? await lastPostTask
+        let preWeekResult = try? await preWeekTask
+
+        let newLiftsThisWeek = preWeekResult?.count ?? liftsThisWeek
+        let storedFrequency = UserDefaults.standard.integer(forKey: "trainingFrequency")
+        let newWeeklyTarget = storedFrequency > 0 ? storedFrequency : 4
 
         let newProfile = profileResult?.first ?? profileRow
         let newTodayHasPreLift = preResult.map { !$0.isEmpty } ?? todayHasPreLift
         let newTodayHasPostLift = postResult.map { !$0.isEmpty } ?? todayHasPostLift
         let newLastSessionRating = lastResult.map { $0.first?.session_rating } ?? lastSessionRating
+
+        // Assemble the most recent full session for the tappable pill.
+        // Preserve the existing value on query failure; clear it when the
+        // query succeeds but the user has no post-lift sessions.
+        var newLastSession: SessionRecord? = lastSession
+        if let posts = lastPostResult {
+            if let post = posts.first {
+                var linkedPre: LastPreRow? = nil
+                if let preLiftID = post.pre_lift_id {
+                    let preRows: [LastPreRow]? = try? await supabase
+                        .from("pre_lift_checkins")
+                        .select("*")
+                        .eq("id", value: preLiftID)
+                        .limit(1)
+                        .execute()
+                        .value
+                    linkedPre = preRows?.first
+                }
+                newLastSession = SessionRecord(
+                    id: post.pre_lift_id ?? "last-session",
+                    createdAt: post.created_at,
+                    muscleGroups: linkedPre?.muscle_groups ?? [],
+                    lastTrainedGap: linkedPre?.last_trained_gap,
+                    sleepHours: linkedPre?.sleep_hours,
+                    mealItems: linkedPre?.meal_items ?? [],
+                    mealTime: linkedPre?.meal_time,
+                    liftTime: linkedPre?.lift_time,
+                    hydration: linkedPre?.hydration,
+                    preWorkout: linkedPre?.pre_workout,
+                    preWorkoutBrand: linkedPre?.pre_workout_brand,
+                    preWorkoutCaffeineMg: linkedPre?.pre_workout_caffeine_mg,
+                    sessionRating: post.session_rating,
+                    performanceVsExpectation: post.performance_vs_expectation,
+                    sessionDuration: post.session_duration,
+                    notes: post.notes
+                )
+            } else {
+                newLastSession = nil
+            }
+        }
 
         await MainActor.run {
             withAnimation(.easeOut(duration: 0.6)) {
@@ -307,6 +414,9 @@ struct HomeView: View {
                 self.todayHasPreLift   = newTodayHasPreLift
                 self.todayHasPostLift  = newTodayHasPostLift
                 self.lastSessionRating = newLastSessionRating
+                self.lastSession       = newLastSession
+                self.liftsThisWeek     = newLiftsThisWeek
+                self.weeklyTarget      = newWeeklyTarget
             }
         }
     }
@@ -327,6 +437,30 @@ private struct HomeIdRow: Decodable {
 
 private struct HomeRatingRow: Decodable {
     let session_rating: Int
+}
+
+private struct LastPostRow: Decodable {
+    let pre_lift_id: String?
+    let session_rating: Int?
+    let performance_vs_expectation: String?
+    let session_duration: String?
+    let notes: String?
+    let created_at: Date
+}
+
+private struct LastPreRow: Decodable {
+    let id: String
+    let created_at: Date
+    let muscle_groups: [String]?
+    let last_trained_gap: String?
+    let sleep_hours: Double?
+    let meal_items: [FoodItem]?
+    let meal_time: Date?
+    let lift_time: Date?
+    let hydration: String?
+    let pre_workout: String?
+    let pre_workout_brand: String?
+    let pre_workout_caffeine_mg: Int?
 }
 
 // MARK: - Check-in card
