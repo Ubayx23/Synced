@@ -45,11 +45,11 @@ struct MainTabView: View {
             HomeView()
                 .tabItem { Label("Home", systemImage: "house.fill") }
 
-            LeaderboardView()
-                .tabItem { Label("Leaderboard", systemImage: "trophy.fill") }
-
             StatsView()
                 .tabItem { Label("Stats", systemImage: "chart.line.uptrend.xyaxis") }
+
+            EducateView()
+                .tabItem { Label("Learn", systemImage: "book.fill") }
         }
         .tint(SYN.cyan)
         .preferredColorScheme(.dark)
