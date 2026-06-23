@@ -9,7 +9,7 @@ struct S8Frequency: View {
     @State private var days: Double = 4
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.s6, onBack: onBack, ambient: false) {
+        ScreenShell(progress: ScreenProgress.s4, onBack: onBack, ambient: false) {
             VStack(alignment: .leading, spacing: 0) {
                 Text("How often do you lift?")
                     .font(.synDisplay(28, weight: .bold))
