@@ -7,7 +7,7 @@ struct OnboardingFlow: View {
         if let i = args.firstIndex(of: "-startStep"),
            i + 1 < args.count,
            let n = Int(args[i + 1]) {
-            return max(1, min(11, n))
+            return max(1, min(6, n))
         }
         return 1
     }()
@@ -22,13 +22,8 @@ struct OnboardingFlow: View {
                 case 1:  S1Welcome(onNext: next)
                 case 2:  S2Value(onBack: back, onNext: next)
                 case 3:  S3Name(model: model, onBack: back, onNext: next)
-                case 4:  S4Age(model: model, onBack: back, onNext: next)
-                case 5:  S7Goal(model: model, onBack: back, onNext: next)
-                case 6:  S8Frequency(model: model, onBack: back, onNext: next)
-                case 7:  S9Sleep(model: model, onBack: back, onNext: next)
-                case 8:  S8CheckInLoop(onBack: back, onNext: next)
-                case 9:  S9Notifications(onBack: back, onNext: next)
-                case 10: SignUpView(onBack: back, onSuccess: next)
+                case 4:  S8Frequency(model: model, onBack: back, onNext: next)
+                case 5:  SignUpView(onBack: back, onSuccess: next)
                 default: S12TierReveal(model: model, onBack: back, onNext: finish)
                 }
             }
@@ -44,7 +39,7 @@ struct OnboardingFlow: View {
         .animation(.easeOut(duration: 0.32), value: step)
     }
 
-    private func next() { step = min(11, step + 1) }
+    private func next() { step = min(6, step + 1) }
     private func back() { step = max(1, step - 1) }
 
     /// Tier-reveal CTA — terminal step. Flips the session phase so
@@ -54,11 +49,14 @@ struct OnboardingFlow: View {
     }
 }
 
-/// Progress values per onboarding step. Steps 1 (welcome) and 11 (tier reveal)
-/// hide the bar entirely; steps 2 to 10 fill evenly from 10% to 90%.
+/// Progress values per onboarding step. Step 1 (welcome) and step 6 (tier
+/// reveal) hide the bar entirely; steps 2 to 5 fill evenly across the flow.
+/// s4 is used by S8Frequency (now step 4). s5, s7, s8, and s9 are retained
+/// only so the parked onboarding screens (S7Goal, S9Sleep, S8CheckInLoop,
+/// S9Notifications) still compile; those screens are no longer in the flow.
 enum ScreenProgress {
-    static let total = 11
-    static let signUpStep = 10
+    static let total = 6
+    static let signUpStep = 5
 
     private static func at(_ step: Int) -> Double {
         Double(step - 1) / Double(total - 1)
@@ -68,7 +66,6 @@ enum ScreenProgress {
     static let s3 = at(3)
     static let s4 = at(4)
     static let s5 = at(5)
-    static let s6 = at(6)
     static let s7 = at(7)
     static let s8 = at(8)
     static let s9 = at(9)
