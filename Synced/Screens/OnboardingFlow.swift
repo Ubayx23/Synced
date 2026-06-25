@@ -20,7 +20,7 @@ struct OnboardingFlow: View {
             Group {
                 switch step {
                 case 1:  S1Welcome(onNext: next)
-                case 2:  S2Value(onBack: back, onNext: next)
+                case 2:  S2ValueIntro(onBack: back, onNext: next)
                 case 3:  S3Name(model: model, onBack: back, onNext: next)
                 case 4:  S8Frequency(model: model, onBack: back, onNext: next)
                 case 5:  SignUpView(onBack: back, onSuccess: next)
