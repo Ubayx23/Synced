@@ -78,7 +78,7 @@ struct SignUpView: View {
 
                 Spacer().frame(height: 10)
 
-                Text("we'll track your fuel, sessions, and the patterns nobody else does.")
+                Text("Save your sessions so Synced can plan your week and spot what actually works for you.")
                     .font(.synText(15))
                     .foregroundStyle(SYN.textDim)
                     .frame(maxWidth: 320, alignment: .leading)

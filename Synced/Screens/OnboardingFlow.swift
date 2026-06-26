@@ -7,7 +7,7 @@ struct OnboardingFlow: View {
         if let i = args.firstIndex(of: "-startStep"),
            i + 1 < args.count,
            let n = Int(args[i + 1]) {
-            return max(1, min(6, n))
+            return max(1, min(5, n))
         }
         return 1
     }()
@@ -20,10 +20,9 @@ struct OnboardingFlow: View {
             Group {
                 switch step {
                 case 1:  S1Welcome(onNext: next)
-                case 2:  S2ValueIntro(onBack: back, onNext: next)
-                case 3:  S3Name(model: model, onBack: back, onNext: next)
-                case 4:  S8Frequency(model: model, onBack: back, onNext: next)
-                case 5:  SignUpView(onBack: back, onSuccess: next)
+                case 2:  S2Value(onBack: back, onNext: next)
+                case 3:  S3Setup(model: model, onBack: back, onNext: next)
+                case 4:  SignUpView(onBack: back, onSuccess: next)
                 default: S12TierReveal(model: model, onBack: back, onNext: finish)
                 }
             }
@@ -39,24 +38,25 @@ struct OnboardingFlow: View {
         .animation(.easeOut(duration: 0.32), value: step)
     }
 
-    private func next() { step = min(6, step + 1) }
+    private func next() { step = min(5, step + 1) }
     private func back() { step = max(1, step - 1) }
 
-    /// Tier-reveal CTA — terminal step. Flips the session phase so
+    /// Tier-reveal CTA, the terminal step. Flips the session phase so
     /// `RootView` swaps to `MainTabView`.
     private func finish() {
         session.markSignedIn()
     }
 }
 
-/// Progress values per onboarding step. Step 1 (welcome) and step 6 (tier
-/// reveal) hide the bar entirely; steps 2 to 5 fill evenly across the flow.
-/// s4 is used by S8Frequency (now step 4). s5, s7, s8, and s9 are retained
-/// only so the parked onboarding screens (S7Goal, S9Sleep, S8CheckInLoop,
-/// S9Notifications) still compile; those screens are no longer in the flow.
+/// Progress values per onboarding step. Step 1 (welcome) and step 5 (tier
+/// reveal) hide the bar entirely; steps 2 to 4 fill evenly across the flow.
+/// s2 is used by S2Value, s3 by S3Setup, signUp by SignUpView (step 4).
+/// s4, s5, s7, s8, and s9 are retained only so the parked onboarding screens
+/// (S8Frequency, S3Name, S7Goal, S9Sleep, S8CheckInLoop, S9Notifications,
+/// S2ValueIntro) still compile; those screens are no longer in the flow.
 enum ScreenProgress {
-    static let total = 6
-    static let signUpStep = 5
+    static let total = 5
+    static let signUpStep = 4
 
     private static func at(_ step: Int) -> Double {
         Double(step - 1) / Double(total - 1)

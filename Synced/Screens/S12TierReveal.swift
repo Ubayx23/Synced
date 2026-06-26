@@ -87,11 +87,10 @@ struct S12TierReveal: View {
     // MARK: - Explainer
 
     private var explainerCard: some View {
-        (Text("Active").bold().foregroundColor(.white)
-         + Text(" means you're showing up. Hit 60+ this week to reach ")
-            .foregroundColor(SYN.textDim)
-         + Text("Dialed").bold().foregroundColor(.white)
-         + Text(".").foregroundColor(SYN.textDim))
+        (Text("You start at ").foregroundColor(SYN.textDim)
+         + Text("Active").bold().foregroundColor(.white)
+         + Text(", and every check-in you log moves you up. The higher you climb, the more history Synced has to surface the patterns that move your numbers.")
+            .foregroundColor(SYN.textDim))
             .font(.synText(15))
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)

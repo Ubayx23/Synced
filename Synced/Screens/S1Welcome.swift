@@ -28,7 +28,7 @@ struct S1Welcome: View {
                     SyncedWordmark(size: 56)
                         .shadow(color: SYN.cyan.opacity(0.45), radius: 22)
 
-                    Text("Train smarter. Recover harder.")
+                    Text("Built for lifters who climb.")
                         .font(.synText(17))
                         .foregroundStyle(SYN.textDim)
                         .phaseFadeUp(phase: phase, delay: 0.10)
