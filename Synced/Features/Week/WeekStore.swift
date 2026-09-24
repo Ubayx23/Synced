@@ -28,6 +28,7 @@ struct Session: Identifiable, Equatable {
     /// One entry per send, sorted ascending. [2, 2, 3] is two V2s and a V3.
     var grades: [Int] = []
     var muscles: [MuscleGroup] = []
+    var exercises: [LiftExercise] = []
     var rating: Int? = nil
     var notes: String? = nil
 
@@ -41,6 +42,8 @@ struct SessionLog {
     var date: Date
     var grades: [Int]
     var muscles: Set<MuscleGroup>
+    /// Already cleaned: named exercises with at least one valid set.
+    var exercises: [LiftExercise]
     var rating: Int?
     var notes: String
 }
@@ -220,6 +223,7 @@ final class WeekStore {
             isPlanned: row.is_planned ?? false,
             grades: grades.sorted(),
             muscles: MuscleGroup.allCases.filter(saved.contains),
+            exercises: row.lift_exercises?.items ?? [],
             rating: row.rating,
             notes: notes?.isEmpty == false ? notes : nil
         )
@@ -227,7 +231,7 @@ final class WeekStore {
 }
 
 private struct SessionRow: Decodable {
-    static let columns = "id, session_type, scheduled_date, is_planned, climb_grade_v, climb_grades_sent, muscle_groups, rating, notes"
+    static let columns = "id, session_type, scheduled_date, is_planned, climb_grade_v, climb_grades_sent, muscle_groups, lift_exercises, rating, notes"
 
     let id: UUID
     let session_type: String?
@@ -236,8 +240,53 @@ private struct SessionRow: Decodable {
     let climb_grade_v: Int?
     let climb_grades_sent: [Int]?
     let muscle_groups: [String]?
+    let lift_exercises: LiftExerciseList?
     let rating: Int?
     let notes: String?
+}
+
+/// Decodes lift_exercises one element at a time so a malformed entry is
+/// skipped instead of failing the whole row.
+private struct LiftExerciseList: Decodable {
+    let items: [LiftExercise]
+
+    private struct Skip: Decodable {}
+
+    init(from decoder: Decoder) throws {
+        var c = try decoder.unkeyedContainer()
+        var items: [LiftExercise] = []
+        while !c.isAtEnd {
+            if let item = try? c.decode(LiftExercise.self) {
+                items.append(item)
+            } else {
+                _ = try? c.decode(Skip.self)
+            }
+        }
+        self.items = items
+    }
+}
+
+extension LiftExercise: Encodable {
+    init(name: String, sets: [LiftSet]) {
+        self.name = name
+        self.sets = sets
+    }
+
+    private enum EncodingKeys: String, CodingKey { case name, sets }
+    private enum SetKeys: String, CodingKey { case weight_lbs, reps }
+
+    /// Writes the shape Progress reads:
+    /// {"name": "Bench press", "sets": [{"weight_lbs": 185, "reps": 5}]}
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: EncodingKeys.self)
+        try c.encode(name, forKey: .name)
+        var list = c.nestedUnkeyedContainer(forKey: .sets)
+        for set in sets {
+            var item = list.nestedContainer(keyedBy: SetKeys.self)
+            try item.encode(set.weightLbs, forKey: .weight_lbs)
+            try item.encode(set.reps, forKey: .reps)
+        }
+    }
 }
 
 private struct PlanInsert: Encodable {
@@ -255,6 +304,7 @@ private struct LogFields: Encodable {
     let climb_grades_sent: [Int]?
     let climb_grade_v: Int?
     let muscle_groups: [String]
+    let lift_exercises: [LiftExercise]?
     let rating: Int?
     let notes: String?
 
@@ -266,13 +316,15 @@ private struct LogFields: Encodable {
         muscle_groups = log.type == .lift
             ? MuscleGroup.allCases.filter(log.muscles.contains).map(\.rawValue)
             : []
+        // null rather than [] when a lift has no exercises, or for other types.
+        lift_exercises = log.type == .lift && !log.exercises.isEmpty ? log.exercises : nil
         rating = log.rating
         let trimmed = log.notes.trimmingCharacters(in: .whitespacesAndNewlines)
         notes = trimmed.isEmpty ? nil : trimmed
     }
 
     private enum CodingKeys: String, CodingKey {
-        case session_type, climb_grades_sent, climb_grade_v, muscle_groups, rating, notes, is_planned
+        case session_type, climb_grades_sent, climb_grade_v, muscle_groups, lift_exercises, rating, notes, is_planned
     }
 
     func encode(to encoder: Encoder) throws {
@@ -281,6 +333,7 @@ private struct LogFields: Encodable {
         try c.encode(climb_grades_sent, forKey: .climb_grades_sent)
         try c.encode(climb_grade_v, forKey: .climb_grade_v)
         try c.encode(muscle_groups, forKey: .muscle_groups)
+        try c.encode(lift_exercises, forKey: .lift_exercises)
         try c.encode(rating, forKey: .rating)
         try c.encode(notes, forKey: .notes)
         try c.encode(false, forKey: .is_planned)

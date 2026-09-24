@@ -11,6 +11,7 @@ struct LogSessionSheet: View {
     @State private var type: SessionType?
     @State private var grades: [Int]
     @State private var muscles: Set<MuscleGroup>
+    @State private var exercises: [ExerciseDraft]
     @State private var rating: Int?
     @State private var notes: String
     @State private var isSaving = false
@@ -26,6 +27,7 @@ struct LogSessionSheet: View {
         _grades = State(initialValue: session?.grades ?? [])
         _muscles = State(initialValue: Set(session?.muscles ?? []))
         _rating = State(initialValue: session?.rating)
+        _exercises = State(initialValue: (session?.exercises ?? []).map(ExerciseDraft.init))
         _notes = State(initialValue: session?.notes ?? "")
     }
 
@@ -77,6 +79,10 @@ struct LogSessionSheet: View {
                     if type == .lift {
                         section("Focus", trailing: "Pick one or more") { musclePicker }
                             .transition(.opacity.combined(with: .move(edge: .top)))
+                        section("Exercises", optional: true) {
+                            ExercisesEditor(exercises: $exercises)
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
 
                     section("Rating", optional: true) { ratingPicker }
@@ -401,6 +407,7 @@ struct LogSessionSheet: View {
             date: session?.date ?? Date(),
             grades: grades,
             muscles: muscles,
+            exercises: type == .lift ? exercises.cleaned : [],
             rating: rating,
             notes: notes
         )
