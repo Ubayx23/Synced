@@ -3,9 +3,10 @@ import AuthenticationServices
 import CryptoKit
 import Supabase
 
-/// Account-creation screen and the default signed-out entry. The "I already
-/// have an account" link hands off to SignInView via `onSignIn`.
+/// Account-creation screen, pushed from WelcomeView. The back chevron
+/// returns to Welcome; "I already have an account" switches to SignInView.
 struct SignUpView: View {
+    var onBack: () -> Void
     var onSignIn: () -> Void
     var onSuccess: () -> Void
 
@@ -60,20 +61,24 @@ struct SignUpView: View {
 
     var body: some View {
         ScreenShell(progress: nil, onBack: nil, ambient: false) {
-            // Centers the form as one unit in the space above the legal line,
-            // and scrolls when the keyboard leaves too little room.
-            GeometryReader { proxy in
-                ScrollView {
-                    VStack(spacing: 0) {
-                        Spacer(minLength: 0)
-                        form
-                        Spacer(minLength: 0)
+            VStack(spacing: 0) {
+                backRow
+
+                // Centers the form as one unit in the space above the legal line,
+                // and scrolls when the keyboard leaves too little room.
+                GeometryReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            form
+                            Spacer(minLength: 0)
+                        }
+                        .frame(minHeight: proxy.size.height)
                     }
-                    .frame(minHeight: proxy.size.height)
+                    .scrollIndicators(.hidden)
+                    .scrollBounceBehavior(.basedOnSize)
+                    .scrollDismissesKeyboard(.interactively)
                 }
-                .scrollIndicators(.hidden)
-                .scrollBounceBehavior(.basedOnSize)
-                .scrollDismissesKeyboard(.interactively)
             }
         } cta: {
             Text("by creating an account you agree to our [Terms](https://synced.page/terms) and [Privacy Policy](https://synced.page/privacy)")
@@ -84,11 +89,33 @@ struct SignUpView: View {
                 .tint(SYN.cyan)
         }
         .disabled(isSubmitting)
+        .animation(.easeOut(duration: 0.2), value: password.isEmpty)
         .task { withAnimation { phase = 1 } }
+    }
+
+    private var backRow: some View {
+        HStack {
+            Button(action: onBack) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(SYN.textDim)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back")
+            Spacer()
+        }
     }
 
     private var form: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Secondary brand appearance; Welcome owns the large wordmark.
+            SyncedWordmark(size: 28)
+                .phaseFadeUp(phase: phase, delay: 0.10)
+
+            Spacer().frame(height: Spacing.l)
+
             Text("create your account")
                 .font(.synDisplay(30, weight: .heavy))
                 .foregroundStyle(SYN.text)
@@ -128,10 +155,12 @@ struct SignUpView: View {
             )
             .phaseFadeUp(phase: phase, delay: 0.52)
 
-            Spacer().frame(height: 12)
-
-            passwordStrength
-                .phaseFadeUp(phase: phase, delay: 0.58)
+            // Nothing reserved until the user types, so no empty gray bar.
+            if !password.isEmpty {
+                Spacer().frame(height: 12)
+                passwordStrength
+                    .transition(.opacity)
+            }
 
             if let errorMessage {
                 Spacer().frame(height: 16)
@@ -327,7 +356,7 @@ private enum SignUpError: LocalizedError {
 #Preview {
     ZStack {
         SYN.bg.ignoresSafeArea()
-        SignUpView(onSignIn: {}, onSuccess: {})
+        SignUpView(onBack: {}, onSignIn: {}, onSuccess: {})
     }
     .preferredColorScheme(.dark)
 }

@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Main screen after auth: the current Monday to Sunday week as seven rows.
-/// Tap a row to plan a session for that day, tap a session to log or edit
-/// it, or use Log now to record a session without planning it first.
+/// Main screen after auth: one Monday to Sunday week as seven rows, starting
+/// on the current week with chevrons to move a week at a time. Tap a row to
+/// plan a session for that day, tap a session to log or edit it, or use Log
+/// now to record a session for today without planning it first.
 struct WeekView: View {
     @State private var store = WeekStore()
     @State private var planTarget: PlanTarget?
@@ -10,8 +11,13 @@ struct WeekView: View {
     @State private var showingProfile = false
     @State private var pendingDelete: Session?
     @State private var deleteError: String?
+    /// 0 is the current week; -1 last week, 1 next week.
+    @State private var weekOffset = 0
 
-    private let days = WeekStore.weekDays()
+    private var days: [Date] {
+        let anchor = WeekStore.calendar.date(byAdding: .weekOfYear, value: weekOffset, to: Date()) ?? Date()
+        return WeekStore.weekDays(containing: anchor)
+    }
     private let rowGap = Spacing.s
     private let minRowHeight: CGFloat = 64
 
@@ -44,7 +50,7 @@ struct WeekView: View {
                                 )
                             }
                         }
-                        .padding(.bottom, Spacing.md)
+                        .padding(.bottom, Spacing.tabBarClearance)
                     }
                     .scrollIndicators(.hidden)
                     .scrollBounceBehavior(.basedOnSize)
@@ -53,7 +59,8 @@ struct WeekView: View {
             }
             .padding(.horizontal, Spacing.pageH)
         }
-        .task { await store.load(week: days) }
+        // Reloads on every week change; a newer change cancels the older fetch.
+        .task(id: weekOffset) { await store.load(week: days) }
         .sheet(item: $planTarget) { target in
             PlanSessionSheet(day: target.day, store: store)
         }
@@ -101,7 +108,7 @@ struct WeekView: View {
     /// Rows share the available height so the week fills the screen, and
     /// scroll once a busy week needs more room.
     private func rowHeight(for available: CGFloat) -> CGFloat {
-        let fitted = (available - Spacing.md - rowGap * 6) / 7
+        let fitted = (available - Spacing.tabBarClearance - rowGap * 6) / 7
         return max(minRowHeight, fitted)
     }
 
@@ -133,9 +140,12 @@ struct WeekView: View {
                     #endif
                 }
             )
-        case .loaded where store.sessions.isEmpty:
+        case .loaded where days.allSatisfy({ store.sessions(on: $0).isEmpty }):
+            let message = weekOffset < 0
+                ? "Nothing logged this week."
+                : weekOffset == 0 ? "Plan your week to get started." : "Nothing planned for this week yet."
             return AnyView(
-                Text("Plan your week to get started.")
+                Text(message)
                     .font(.synText(13))
                     .foregroundStyle(SYN.textDim)
             )
@@ -148,9 +158,27 @@ struct WeekView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
-            HStack {
-                EyebrowText(text: "This week")
+            HStack(spacing: Spacing.s) {
+                EyebrowText(text: weekEyebrow)
                     .foregroundStyle(SYN.textFaint)
+                    .contentTransition(.opacity)
+
+                // Only when off the current week: one tap back to today.
+                if weekOffset != 0 {
+                    Button { weekOffset = 0 } label: {
+                        Text("Today")
+                            .font(.synText(12, weight: .semibold))
+                            .foregroundStyle(SYN.cyan)
+                            .padding(.horizontal, Spacing.s)
+                            .frame(height: 22)
+                            .overlay(Capsule().stroke(SYN.cyan.opacity(0.5), lineWidth: 1))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.vertical, -Spacing.xs)
+                    .transition(.opacity)
+                    .accessibilityLabel("Go to this week")
+                }
 
                 Spacer()
 
@@ -168,18 +196,50 @@ struct WeekView: View {
                 .accessibilityLabel("Profile")
             }
 
-            HStack(alignment: .center, spacing: Spacing.md) {
+            HStack(alignment: .center, spacing: Spacing.xs) {
+                weekChevron("chevron.left", label: "Previous week") { weekOffset -= 1 }
+
                 Text(weekRangeLabel)
-                    .font(.synDisplay(28, weight: .bold))
+                    .font(.synDisplay(24, weight: .bold))
                     .foregroundStyle(SYN.text)
-                    .kerning(-0.6)
+                    .kerning(-0.5)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.75)
+                    .contentTransition(.opacity)
 
-                Spacer(minLength: 0)
+                weekChevron("chevron.right", label: "Next week") { weekOffset += 1 }
 
+                Spacer(minLength: Spacing.s)
+
+                // Always logs for today, whichever week is showing.
                 logNowButton
             }
+            // Pull the left chevron's hit area out to the page margin.
+            .padding(.leading, -Spacing.s)
+        }
+        .animation(.easeOut(duration: 0.2), value: weekOffset)
+    }
+
+    private func weekChevron(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(SYN.textDim)
+                .frame(width: 32, height: 40)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
+    /// "This week", "Next week", "Last week", "In 3 weeks", "2 weeks ago".
+    private var weekEyebrow: String {
+        switch weekOffset {
+        case 0:  return "This week"
+        case 1:  return "Next week"
+        case -1: return "Last week"
+        case let n where n > 1: return "In \(n) weeks"
+        default: return "\(-weekOffset) weeks ago"
         }
     }
 
@@ -262,7 +322,8 @@ private struct DayRow: View {
                 .frame(width: 1)
                 .padding(.vertical, Spacing.m)
 
-            HStack(spacing: Spacing.s) {
+            // Chips wrap onto a second line instead of squeezing their labels.
+            FlowLayout(spacing: Spacing.s) {
                 ForEach(sessions) { session in
                     SessionChip(session: session, showsLabel: sessions.count <= 2) {
                         onOpen(session)
@@ -282,17 +343,12 @@ private struct DayRow: View {
                     .accessibilityAction(named: "Delete session") { onDelete(session) }
                 }
             }
-
-            Spacer(minLength: 0)
-
-            Image(systemName: "plus")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(sessions.isEmpty ? SYN.textDim : SYN.textFaint)
-                .frame(width: 32, height: 32)
-                .background(Circle().stroke(SYN.border, lineWidth: 1))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, Spacing.m)
         }
         .padding(.horizontal, Spacing.md)
-        .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
+        // At least the fitted height; taller when chips wrap to a second line.
+        .frame(maxWidth: .infinity, minHeight: height)
         .background(
             RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                 .fill(SYN.surface.opacity(isToday ? 1 : 0.6))

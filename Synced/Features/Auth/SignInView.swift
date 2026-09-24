@@ -1,10 +1,11 @@
 import SwiftUI
 import Supabase
 
-/// Sign-in screen for returning users. Presented as a full-screen cover from
-/// SignUpView's "I already have an account" link.
+/// Sign-in screen for returning users, pushed from WelcomeView. The back
+/// chevron returns to Welcome; "Create an account" switches to SignUpView.
 struct SignInView: View {
     var onClose: () -> Void
+    var onCreateAccount: (() -> Void)? = nil
 
     @Environment(SessionStore.self) private var session
 
@@ -76,10 +77,16 @@ struct SignInView: View {
                 Spacer()
             }
         } cta: {
-            PrimaryButton(title: "Log in", action: submit)
-                .opacity(canSubmit ? 1 : 0.5)
-                .disabled(!canSubmit)
-                .allowsHitTesting(canSubmit)
+            VStack(spacing: Spacing.md) {
+                PrimaryButton(title: "Log in", action: submit)
+                    .opacity(canSubmit ? 1 : 0.5)
+                    .disabled(!canSubmit)
+                    .allowsHitTesting(canSubmit)
+
+                if let onCreateAccount {
+                    TextLinkButton(title: "Create an account", action: onCreateAccount)
+                }
+            }
         }
         .disabled(isSubmitting)
         .task { withAnimation { phase = 1 } }
@@ -95,6 +102,7 @@ struct SignInView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Back")
             Spacer()
         }
     }

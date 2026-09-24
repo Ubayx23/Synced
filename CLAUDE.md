@@ -39,29 +39,31 @@ cyan accent, Geist type, and the existing tokens and components. New screens
 should look like they belong to the same app.
 
 ## MVP scope (v0.1, "ugly launch")
-Four screens total:
-1. Sign up / Sign in
-2. Week view (the main screen after auth)
-3. Log session sheet
-4. Profile sheet (email display and sign out)
+Screens:
+1. Welcome (signed-out entry: Create account or I already have an account)
+2. Sign up / Sign in (pushed from Welcome)
+3. Week (tab 1): one Monday to Sunday week, chevrons to move between weeks
+4. Progress (tab 2): headline, climb grade pyramid, lift trend cards, footer
+5. Plan session sheet, Log session sheet, Profile sheet
 
 Plan and log are one flow:
 - Tap a day in the Week view to add a planned session.
 - Tap a planned session to mark it done and log it. The Log session sheet
-  opens pre-filled with the planned session type.
+  opens pre-filled with the planned session type. Log now logs for today.
 
 Session types:
-- Climb: includes a V-grade (V0 to V17).
-- Lift: includes a muscle group focus.
+- Climb: one or more sends, each a V-grade (V0 to V17).
+- Lift: one or more muscle groups, plus optional exercises with sets of
+  weight (lbs) and reps.
 - Rest: no extra fields.
 
 The Log session sheet is a single adaptive form (type picker, then fields
 for that type, then save). It is not a multi-step flow.
 
 Out of scope for MVP, do not build or preserve:
-- Onboarding beyond auth
+- Onboarding beyond Welcome and auth
 - Tiers, scores, streaks, leaderboard
-- Stats screen, insights, charts
+- Insights feeds
 - Learn tab
 - HealthKit
 - Readiness inputs: sleep, food, meal timing, hydration, pre-workout
@@ -122,78 +124,42 @@ data is not reversible.
 A single `sessions` table may replace these later. That is post-MVP; for now
 make additive changes to the existing tables only.
 
-## Current code state (before MVP restructure)
-The repo still reflects the previous lifter-focused product. Describe and
-change it; do not treat it as the target.
-
+## Current code state
 Entry and routing:
 - SyncedApp mounts RootView.
 - RootView shows LaunchScreen, then routes on `SessionStore.phase`:
-  signed in goes to MainTabView, signed out goes to OnboardingFlow.
+  signed in goes to MainTabView; signed out goes to a NavigationStack rooted
+  at WelcomeView, which pushes SignUpView or SignInView. The nav bar is
+  hidden; each auth screen has its own back chevron back to Welcome, and
+  each links to the other.
 - SessionStore (State/SessionStore.swift) owns auth state: `bootstrap()`,
   `markSignedIn()`, `signOut()`.
 
-Onboarding (OnboardingFlow.swift, 5 steps): S1Welcome, S2Value, S3Setup,
-SignUpView, S12TierReveal. SignInView is a full-screen cover opened from
-S1Welcome's "I already have an account" link. Parked screens (S2ValueIntro,
-S3Name, S4Age, S7Goal, S8Frequency, S9Sleep, S8CheckInLoop, S9Notifications)
-are out of the flow but still compile.
-
-Main app: MainTabView has Home, Stats, and Learn (EducateView) tabs.
-LeaderboardView exists but is not in the tab bar. ProfileView is a sheet
-from HomeView. PreLiftCheckInView (multi-step, with a UserDefaults draft)
-and PostLiftCheckInView (2 steps) are full-screen sheets from HomeView and
-also compute scores and write profile and leaderboard rollups.
+Main app (Features/):
+- MainTabView (App/): Week and Progress tabs. Each tab's header has the
+  profile icon that opens ProfileSheet.
+- Week/: WeekView, WeekStore (fetch, plan, log, delete), PlanSessionSheet,
+  LogSessionSheet, ExercisesEditor.
+- Progress/: ProgressScreen and ProgressStore (one fetch, all aggregation
+  client side).
+- Profile/: ProfileSheet (sign out).
+- Auth/: WelcomeView, SignUpView, SignInView.
 
 Shared UI to reuse:
 - Components/: ScreenShell, ProgressHeader, PrimaryButton, SecondaryButton,
   TextLinkButton, SpecInput, SpecSlider, SelectableCard, EyebrowTag, GlowDot,
-  PhaseReveal (.phaseFadeUp), AgePicker, LuminousOrb, CheckInCalendarSheet
+  PhaseReveal (.phaseFadeUp), AgePicker, LuminousOrb, FlowLayout
 - DesignSystem/: Tokens (SYN.*, Spacing, Radius), Typography (synDisplay,
   synText, synMono, EyebrowText), Atmosphere, Wordmark
 
 ## Do not touch for MVP
-- Auth: SignUpView, SignInView, SessionStore. They work.
+- SessionStore, SignUpView's `writeProfile()`, and the Sign in with Apple
+  scaffolding. Auth screen layout can change; the auth flow itself should
+  not.
 - The Supabase client singleton and RLS policies.
 - DesignSystem/ tokens (colors, typography, spacing, radius), except adding
   a missing token.
 - XcodeGen config beyond adding or removing source files.
-
-Known coupling: SignUpView reads `OnboardingModel` from the environment and
-uses `ScreenProgress` for its progress bar and "Step N of M" label, and its
-`writeProfile()` writes onboarding answers to profiles. When stripping
-onboarding, make the smallest change that keeps SignUpView compiling and
-working (for example, keep `OnboardingModel` and `ScreenProgress` alive, or
-trim `writeProfile()` to id, email, and username). Do not redesign the auth
-screens.
-
-## Will change for MVP
-- HomeView is replaced by the Week view, the main screen after auth.
-- MainTabView is simplified, most likely to no tab bar. Profile becomes a
-  sheet from the Week view.
-- PreLiftCheckInView and PostLiftCheckInView are gutted and replaced by the
-  single adaptive Log session sheet. Their scoring and leaderboard rollup
-  code goes with them.
-- StatsView, LeaderboardView, EducateView, and every onboarding screen
-  except SignUpView and SignInView are removed. Move a file to
-  Synced/.parked/ only if it is worth preserving; otherwise delete it.
-  project.yml sources `Synced/`, so confirm parked files are excluded from
-  the build (or exclude them in project.yml) and run `xcodegen generate`.
-- Unused UserDefaults keys (userAge, trainingGoal, sleepBaseline, the
-  pre-lift draft) can be removed along with the screens that use them.
-
-## MVP build order
-1. Additive DB migration in Supabase: session_type, climb_grade_v,
-   is_planned.
-2. Strip dead screens (Stats, Leaderboard, Educate, all onboarding screens
-   except SignUp and SignIn). Route straight from auth to the Week view; a
-   temporary placeholder screen is fine for this step.
-3. Build the Week view: 7-day grid, tap a day to plan, tap a planned
-   session to log.
-4. Build the Log session sheet: type picker, adaptive fields, save.
-5. Build the Profile sheet: email display and sign out.
-6. Smoke test end to end: sign up, Week view, plan a session, tap to log,
-   see it filled in, sign out, sign in, data persists.
 
 ## Build and CI
 - `brew install xcodegen && xcodegen generate && open Synced.xcodeproj`

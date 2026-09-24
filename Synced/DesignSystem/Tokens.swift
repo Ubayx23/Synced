@@ -44,6 +44,8 @@ enum Spacing {
     static let xl: CGFloat = 32
     static let xxl: CGFloat = 48
     static let pageH: CGFloat = 24
+    /// Space below the last scroll item so it clears the floating tab bar.
+    static let tabBarClearance: CGFloat = 64
 }
 
 enum Radius {

@@ -40,7 +40,7 @@ struct ProgressScreen: View {
                 }
                 .padding(.horizontal, Spacing.pageH)
                 .padding(.top, Spacing.md)
-                .padding(.bottom, Spacing.xl)
+                .padding(.bottom, Spacing.tabBarClearance)
                 .animation(.easeOut(duration: 0.2), value: window)
             }
             .scrollIndicators(.hidden)
