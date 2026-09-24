@@ -76,6 +76,13 @@ struct SignUpView: View {
 
     private var form: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Smaller return of Welcome's wordmark, same cyan glow scaled down.
+            SyncedWordmark(size: 26)
+                .shadow(color: SYN.cyan.opacity(0.4), radius: 10)
+                .phaseFadeUp(phase: phase, delay: 0.04)
+
+            Spacer().frame(height: Spacing.md)
+
             Text("create your account")
                 .font(.synDisplay(30, weight: .heavy))
                 .foregroundStyle(SYN.text)
