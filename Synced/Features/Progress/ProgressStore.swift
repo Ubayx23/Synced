@@ -158,8 +158,38 @@ struct GradePoint: Identifiable {
 
 struct ExercisePoint: Identifiable {
     let date: Date
+    /// Heaviest set that session; drives the sparkline and headline set.
     let set: LiftSet
+    /// Final set that session; drives the session-over-session comparison.
+    let lastSet: LiftSet
     var id: Date { date }
+}
+
+/// Last set of the latest session against the last set of the one before.
+struct SessionDelta {
+    enum Tone { case up, down, mixed, same }
+
+    let weight: Double
+    let reps: Int
+
+    var tone: Tone {
+        if weight == 0 && reps == 0 { return .same }
+        if weight >= 0 && reps >= 0 { return .up }
+        if weight <= 0 && reps <= 0 { return .down }
+        return .mixed
+    }
+
+    /// "+10 lbs, same reps", "Same weight, +2 reps", "+5 lbs, -1 rep".
+    var text: String {
+        if tone == .same { return "Same as last session" }
+        let amount = abs(weight).rounded() == abs(weight)
+            ? String(Int(abs(weight)))
+            : abs(weight).formatted(.number.precision(.fractionLength(1)))
+        let weightPart = weight > 0 ? "+\(amount) lbs" : weight < 0 ? "-\(amount) lbs" : "Same weight"
+        let repWord = abs(reps) == 1 ? "rep" : "reps"
+        let repsPart = reps > 0 ? "+\(reps) \(repWord)" : reps < 0 ? "-\(-reps) \(repWord)" : "same reps"
+        return "\(weightPart), \(repsPart)"
+    }
 }
 
 struct ExerciseTrend: Identifiable {
@@ -171,11 +201,18 @@ struct ExerciseTrend: Identifiable {
     var first: ExercisePoint { points[0] }
     var previous: ExercisePoint? { points.count >= 2 ? points[points.count - 2] : nil }
 
-    /// Most recent top set is lighter than the one before it.
-    var isDowntrend: Bool {
-        guard let previous else { return false }
-        return latest.set.weightLbs < previous.set.weightLbs
+    /// nil until there are two sessions to compare.
+    var sessionDelta: SessionDelta? {
+        guard let previous else { return nil }
+        return SessionDelta(
+            weight: latest.lastSet.weightLbs - previous.lastSet.weightLbs,
+            reps: latest.lastSet.reps - previous.lastSet.reps
+        )
     }
+
+    /// Latest session came in lighter or for fewer reps, with nothing better.
+    var isDowntrend: Bool { sessionDelta?.tone == .down }
+    var isUptrend: Bool { sessionDelta?.tone == .up }
 
     /// Sparkline fits tightly around the data, never from zero.
     var weightDomain: ClosedRange<Double> {
@@ -315,15 +352,16 @@ struct ProgressSummary {
         for session in lifts.sorted(by: { $0.date > $1.date }) {
             for exercise in session.exercises {
                 let key = exercise.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                guard !key.isEmpty, let set = exercise.topSet else { continue }
+                guard !key.isEmpty, let set = exercise.topSet, let last = exercise.sets.last else { continue }
                 var entry = grouped[key] ?? (name: exercise.name.trimmingCharacters(in: .whitespacesAndNewlines), points: [])
-                // One point per day: keep the heavier top set.
+                let point = ExercisePoint(date: session.date, set: set, lastSet: last)
+                // One point per day: keep the session with the heavier top set.
                 if let i = entry.points.firstIndex(where: { cal.isDate($0.date, inSameDayAs: session.date) }) {
                     if (set.weightLbs, set.reps) > (entry.points[i].set.weightLbs, entry.points[i].set.reps) {
-                        entry.points[i] = ExercisePoint(date: session.date, set: set)
+                        entry.points[i] = point
                     }
                 } else {
-                    entry.points.append(ExercisePoint(date: session.date, set: set))
+                    entry.points.append(point)
                 }
                 grouped[key] = entry
             }
@@ -398,9 +436,7 @@ struct ProgressHero {
             return
         }
 
-        let ups = trends.filter { trend in
-            trend.previous.map { trend.latest.set.weightLbs > $0.set.weightLbs } ?? false
-        }.count
+        let ups = trends.filter(\.isUptrend).count
         let downs = trends.filter(\.isDowntrend).count
         let count = trends.count
         let liftsDown = count > 0 && downs * 2 > count

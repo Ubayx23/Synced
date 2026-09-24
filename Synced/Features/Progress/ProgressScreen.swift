@@ -397,23 +397,16 @@ struct ProgressScreen: View {
 private struct ExerciseTrendCard: View {
     let trend: ExerciseTrend
 
-    private var change: Double { trend.latest.set.weightLbs - trend.first.set.weightLbs }
     private var showsSparkline: Bool { trend.points.count >= ProgressSummary.minChartPoints }
 
-    private var changeText: String {
-        let amount = abs(change).rounded() == abs(change)
-            ? String(Int(abs(change)))
-            : abs(change).formatted(.number.precision(.fractionLength(1)))
-        let since = trend.first.date.formatted(.dateTime.month(.abbreviated).day())
-        if change > 0 { return "+\(amount) lbs since \(since)" }
-        if change < 0 { return "-\(amount) lbs since \(since)" }
-        return "Holding since \(since)"
-    }
-
-    /// Amber when the latest top set is lighter than the one before it.
-    private var changeColor: Color {
-        if trend.isDowntrend || change < 0 { return SYN.amber }
-        return change > 0 ? SYN.green : SYN.textFaint
+    /// Up is green, down is amber, a trade-off (one up, one down) is neutral.
+    private func color(for delta: SessionDelta) -> Color {
+        switch delta.tone {
+        case .up:    return SYN.green
+        case .down:  return SYN.amber
+        case .mixed: return SYN.textDim
+        case .same:  return SYN.textFaint
+        }
     }
 
     var body: some View {
@@ -429,14 +422,14 @@ private struct ExerciseTrendCard: View {
                         .font(.synMono(17, weight: .semibold))
                         .foregroundStyle(SYN.cyan)
                 } else {
-                    // Two points: say what changed instead of drawing a line.
+                    // Two sessions: show the last set of each instead of a line.
                     HStack(spacing: Spacing.xs) {
-                        Text(trend.first.set.formatted)
+                        Text(trend.first.lastSet.formatted)
                             .foregroundStyle(SYN.textDim)
                         Image(systemName: "arrow.right")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(SYN.textFaint)
-                        Text(trend.latest.set.formatted)
+                        Text(trend.latest.lastSet.formatted)
                             .foregroundStyle(trend.isDowntrend ? SYN.amber : SYN.cyan)
                     }
                     .font(.synMono(15, weight: .semibold))
@@ -444,9 +437,11 @@ private struct ExerciseTrendCard: View {
                     .minimumScaleFactor(0.8)
                 }
 
-                Text(changeText)
-                    .font(.synText(12, weight: .medium))
-                    .foregroundStyle(changeColor)
+                if let delta = trend.sessionDelta {
+                    Text(delta.text)
+                        .font(.synText(12, weight: .medium))
+                        .foregroundStyle(color(for: delta))
+                }
             }
 
             if showsSparkline {
