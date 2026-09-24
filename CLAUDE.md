@@ -99,12 +99,19 @@ Tables:
 - leaderboard_entries, waitlist: exist but are unwired for MVP. Leave their
   schema alone.
 
-### MVP migration (additive only)
-Add to the session tables:
-- `session_type TEXT` with values 'climb', 'lift', 'rest'
-- `climb_grade_v INTEGER`, nullable, 0 to 17
-- `is_planned BOOLEAN DEFAULT false`, true while a session is planned but
-  not yet done
+### Session columns in use (pre_lift_checkins, one row per session)
+- `session_type TEXT`: 'climb', 'lift', 'rest'
+- `scheduled_date DATE`: the day the session belongs to, written as
+  yyyy-MM-dd in the device time zone
+- `is_planned BOOLEAN DEFAULT false`: true until the session is logged
+- `climb_grades_sent INTEGER[]`: one entry per send, e.g. [2, 2, 3]
+- `climb_grade_v INTEGER`: mirrors max(climb_grades_sent)
+- `muscle_groups TEXT[]`: lift focus, e.g. ['chest', 'arms']
+- `rating INTEGER` (1 to 5, optional), `notes TEXT` (optional)
+- `lift_exercises JSONB`: read by Progress, not yet written by the app.
+  Expected shape:
+  `[{"name": "Bench press", "sets": [{"weight_lbs": 185, "reps": 5}]}]`.
+  Progress fetches with `select *` so the column may be absent.
 
 Lifter-specific columns (meal_items, meal_time, hydration, pre_workout,
 pre_workout_brand, pre_workout_caffeine_mg, and similar) become nullable and

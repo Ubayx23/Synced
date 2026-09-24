@@ -70,7 +70,7 @@ final class WeekStore {
 
     /// scheduled_date is a calendar day, so it round-trips as yyyy-MM-dd in
     /// the device time zone.
-    private static let dayFormatter: DateFormatter = {
+    static let dayFormatter: DateFormatter = {
         let f = DateFormatter()
         f.calendar = calendar
         f.locale = Locale(identifier: "en_US_POSIX")

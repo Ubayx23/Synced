@@ -13,7 +13,7 @@ struct RootView: View {
                 LaunchScreen { showingLaunch = false }
                     .transition(.opacity)
             } else if session.phase == .signedIn {
-                WeekView()
+                MainTabView()
                     .transition(.opacity)
             } else {
                 authEntry
