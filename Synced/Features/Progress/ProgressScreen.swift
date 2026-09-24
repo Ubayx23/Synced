@@ -169,45 +169,21 @@ struct ProgressScreen: View {
                             .foregroundStyle(SYN.cyan)
                             .shadow(color: SYN.cyan.opacity(0.35), radius: 14)
                             .contentTransition(.numericText())
-                        // All time's "First sent" line would repeat the compact block.
-                        if let comparison = s.comparison, s.showsGradeChart || s.window == .last30 {
+                        if let comparison = s.comparison {
                             Text(comparison)
                                 .font(.synText(13, weight: .medium))
                                 .foregroundStyle(comparisonColor(comparison, downtrend: s.climbDowntrend))
                         }
                     }
 
-                    if s.showsGradeChart {
-                        gradeChart(s)
-                    } else {
-                        sparseClimbBlock(s)
-                    }
-
-                    VStack(alignment: .leading, spacing: Spacing.s) {
-                        Text(s.window == .last30 ? "Sends this month" : "Sends all time")
-                            .font(.synText(13))
-                            .foregroundStyle(SYN.textDim)
-                        FlowLayout(spacing: Spacing.s) {
-                            ForEach(s.sendCounts, id: \.grade) { item in
-                                HStack(spacing: 4) {
-                                    Text("V\(item.grade)")
-                                        .font(.synMono(13, weight: .semibold))
-                                    Text("×\(item.count)")
-                                        .font(.synMono(11, weight: .medium))
-                                        .opacity(0.7)
-                                }
-                                .foregroundStyle(SYN.cyan)
-                                .padding(.horizontal, Spacing.m)
-                                .frame(height: 30)
-                                .background(Capsule().fill(SYN.cyan.opacity(0.08)))
-                                .overlay(Capsule().stroke(SYN.cyan.opacity(0.5), lineWidth: 1))
-                                .accessibilityElement(children: .ignore)
-                                .accessibilityLabel("V\(item.grade), \(item.count) \(item.count == 1 ? "send" : "sends")")
-                            }
-                        }
-                    }
+                    GradePyramid(sendCounts: s.sendCounts)
                 }
                 .progressCard()
+            } else if s.hasClimbedEver {
+                Text(s.window == .last30 ? "No sends this month yet." : "No sends yet.")
+                    .font(.synText(14))
+                    .foregroundStyle(SYN.textDim)
+                    .progressCard()
             } else {
                 emptyState(
                     icon: SessionType.climb.symbol,
@@ -222,82 +198,6 @@ struct ProgressScreen: View {
         if downtrend || text.hasPrefix("-") { return SYN.amber }
         if text.hasPrefix("+") { return SYN.green }
         return SYN.textFaint
-    }
-
-    /// Under three climbing days a line would overstate the trend, so show
-    /// the first send and when the chart will appear instead.
-    private func sparseClimbBlock(_ s: ProgressSummary) -> some View {
-        let remaining = ProgressSummary.minChartPoints - s.gradePoints.count
-        return VStack(alignment: .leading, spacing: Spacing.xs) {
-            if let firstSend = s.firstSendText {
-                Text(firstSend)
-                    .font(.synText(14, weight: .medium))
-                    .foregroundStyle(SYN.text)
-            }
-            Text("Log \(remaining) more climbing \(remaining == 1 ? "day" : "days") to see your trend chart.")
-                .font(.synText(13))
-                .foregroundStyle(SYN.textFaint)
-        }
-        .padding(Spacing.m)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: Radius.input, style: .continuous)
-                .fill(SYN.bg.opacity(0.6))
-        )
-    }
-
-    /// Y and X fit the data: grades from one below the lowest to two above
-    /// the highest, dates from the first climb to today.
-    private func gradeChart(_ s: ProgressSummary) -> some View {
-        let lineColor = s.climbDowntrend ? SYN.amber : SYN.cyan
-        let span = s.gradeDomain.upperBound - s.gradeDomain.lowerBound
-        let step = span > 8 ? 2 : 1
-        let yValues = Array(stride(from: s.gradeDomain.lowerBound, through: s.gradeDomain.upperBound, by: step))
-
-        return Chart(s.gradePoints) { point in
-            LineMark(
-                x: .value("Day", point.date, unit: .day),
-                y: .value("Grade", point.grade)
-            )
-            .foregroundStyle(lineColor)
-            .interpolationMethod(.monotone)
-            .lineStyle(StrokeStyle(lineWidth: 2))
-
-            PointMark(
-                x: .value("Day", point.date, unit: .day),
-                y: .value("Grade", point.grade)
-            )
-            .foregroundStyle(lineColor)
-            .symbolSize(28)
-        }
-        .chartXScale(domain: s.chartDomain)
-        .chartYScale(domain: s.gradeDomain)
-        .chartYAxis {
-            AxisMarks(position: .leading, values: yValues) { value in
-                AxisGridLine().foregroundStyle(SYN.border.opacity(0.4))
-                AxisValueLabel {
-                    if let grade = value.as(Int.self) {
-                        Text("V\(grade)")
-                            .font(.synMono(11))
-                            .foregroundStyle(SYN.textFaint)
-                    }
-                }
-            }
-        }
-        .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 3)) { value in
-                AxisGridLine().foregroundStyle(SYN.border.opacity(0.25))
-                AxisValueLabel {
-                    if let date = value.as(Date.self) {
-                        Text(date.formatted(.dateTime.month(.abbreviated).day()))
-                            .font(.synText(11))
-                            .foregroundStyle(SYN.textFaint)
-                    }
-                }
-            }
-        }
-        .frame(height: 160)
-        .accessibilityLabel("Highest grade sent per climbing day")
     }
 
     // MARK: - Lifts
@@ -481,7 +381,53 @@ private struct ExerciseTrendCard: View {
     }
 }
 
-// MARK: - Card style and flow layout
+// MARK: - Grade pyramid
+
+/// Sends per grade, highest grade on top, one row per grade with at least
+/// one send. The widest bar is the grade with the most sends; the rest
+/// scale against it. Grade labels are the axis, the count is the number.
+private struct GradePyramid: View {
+    let sendCounts: [(grade: Int, count: Int)]
+
+    private let rowHeight: CGFloat = 24
+    private let labelWidth: CGFloat = 36
+    private let countWidth: CGFloat = 36
+
+    private var maxCount: Int { sendCounts.map(\.count).max() ?? 1 }
+
+    var body: some View {
+        VStack(spacing: 5) {
+            ForEach(sendCounts, id: \.grade) { item in
+                HStack(spacing: Spacing.s) {
+                    Text("V\(item.grade)")
+                        .font(.synMono(13, weight: .semibold))
+                        .foregroundStyle(SYN.text)
+                        .frame(width: labelWidth, alignment: .leading)
+
+                    GeometryReader { proxy in
+                        let fraction = CGFloat(item.count) / CGFloat(max(maxCount, 1))
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(SYN.cyan)
+                            .frame(width: max(proxy.size.width * fraction, rowHeight / 2))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(height: rowHeight)
+
+                    Text("×\(item.count)")
+                        .font(.synMono(13, weight: .medium))
+                        .foregroundStyle(SYN.textDim)
+                        .frame(width: countWidth, alignment: .trailing)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("V\(item.grade), \(item.count) \(item.count == 1 ? "send" : "sends")")
+            }
+        }
+        .animation(.easeOut(duration: 0.25), value: sendCounts.map(\.count))
+        .animation(.easeOut(duration: 0.25), value: sendCounts.map(\.grade))
+    }
+}
+
+// MARK: - Card style
 
 private extension View {
     func progressCard() -> some View {
@@ -496,54 +442,5 @@ private extension View {
                 RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                     .stroke(SYN.border, lineWidth: 1)
             )
-    }
-}
-
-/// Wraps chips onto new lines when a row runs out of width.
-private struct FlowLayout: Layout {
-    var spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let rows = arrange(width: proposal.width ?? .infinity, subviews: subviews)
-        let height = rows.last.map { $0.y + $0.height } ?? 0
-        let width = rows.map(\.width).max() ?? 0
-        return CGSize(width: proposal.width ?? width, height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        for row in arrange(width: bounds.width, subviews: subviews) {
-            var x = bounds.minX
-            for index in row.indices {
-                let size = subviews[index].sizeThatFits(.unspecified)
-                subviews[index].place(at: CGPoint(x: x, y: bounds.minY + row.y), proposal: .unspecified)
-                x += size.width + spacing
-            }
-        }
-    }
-
-    private struct Row {
-        var indices: [Int] = []
-        var y: CGFloat = 0
-        var width: CGFloat = 0
-        var height: CGFloat = 0
-    }
-
-    private func arrange(width maxWidth: CGFloat, subviews: Subviews) -> [Row] {
-        var rows: [Row] = [Row()]
-        for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            var row = rows[rows.count - 1]
-            let needed = row.indices.isEmpty ? size.width : row.width + spacing + size.width
-            if needed > maxWidth, !row.indices.isEmpty {
-                let y = row.y + row.height + spacing
-                rows.append(Row(indices: [index], y: y, width: size.width, height: size.height))
-                continue
-            }
-            row.indices.append(index)
-            row.width = needed
-            row.height = max(row.height, size.height)
-            rows[rows.count - 1] = row
-        }
-        return rows.filter { !$0.indices.isEmpty }
     }
 }

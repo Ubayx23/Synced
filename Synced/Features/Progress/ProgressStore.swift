@@ -230,21 +230,16 @@ struct ProgressSummary {
 
     // Climb
     let hasClimbs: Bool
+    /// Any climb session at all, in or out of the window.
+    let hasClimbedEver: Bool
     let topGrade: Int?
     let comparison: String?
-    /// Oldest first, one point per day with climbing.
+    /// Oldest first, one point per day with climbing. Feeds the headline.
     let gradePoints: [GradePoint]
-    /// Fewer than this many points shows a compact stat instead of a chart.
+    /// Lift cards need this many sessions before drawing a sparkline.
     static let minChartPoints = 3
-    var showsGradeChart: Bool { gradePoints.count >= Self.minChartPoints }
-    /// From the first point (never before it) to today.
-    let chartDomain: ClosedRange<Date>
-    /// One below the lowest top grade to two above the highest, within V0 to V17.
-    let gradeDomain: ClosedRange<Int>
     /// Most recent point sits below an earlier peak.
     let climbDowntrend: Bool
-    /// "First send at V3 on Sep 21" for the window's top grade.
-    let firstSendText: String?
     /// Grade and count, highest grade first.
     let sendCounts: [(grade: Int, count: Int)]
 
@@ -277,6 +272,7 @@ struct ProgressSummary {
         // Climb
         let climbs = inWindow.filter { $0.type == .climb && !$0.grades.isEmpty }
         hasClimbs = !climbs.isEmpty
+        hasClimbedEver = sessions.contains { $0.type == .climb }
         let top = climbs.flatMap(\.grades).max()
         topGrade = top
 
@@ -317,25 +313,12 @@ struct ProgressSummary {
             .sorted { $0.date < $1.date }
 
         let thisWeek = weekStart(today)
-        let firstDay = gradePoints.first?.date ?? today
-        chartDomain = min(firstDay, today)...today
-
-        let pointGrades = gradePoints.map(\.grade)
-        let low = pointGrades.min() ?? 0
-        let high = pointGrades.max() ?? 0
-        gradeDomain = max(0, low - 1)...min(17, high + 2)
 
         if let last = gradePoints.last, gradePoints.count >= 2 {
             let earlierPeak = gradePoints.dropLast().map(\.grade).max() ?? last.grade
             climbDowntrend = last.grade < earlierPeak
         } else {
             climbDowntrend = false
-        }
-
-        if let top, let day = climbs.filter({ $0.grades.contains(top) }).map(\.date).min() {
-            firstSendText = "First send at V\(top) on \(day.formatted(.dateTime.month(.abbreviated).day()))"
-        } else {
-            firstSendText = nil
         }
 
         sendCounts = Dictionary(grouping: climbs.flatMap(\.grades), by: { $0 })
