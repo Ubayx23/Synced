@@ -88,13 +88,11 @@ The service role key never goes in client code.
 
 ## Database
 RLS is enabled on every table. Users own their own rows (auth.uid() checks).
-A `handle_new_user()` trigger creates a profiles row on every new auth.users
-insert.
+A `handle_new_user()` trigger creates a profiles row (id and email) on every
+new auth.users insert.
 
 Tables:
-- profiles: id (FK auth.users), username, email, training_goal,
-  training_frequency, sleep_baseline, tier, score, streak, timestamps.
-  For MVP only id, username, and email matter.
+- profiles: id (FK auth.users), email, created_at, updated_at.
 - sessions: one row per planned or logged session (climb, lift, or rest).
 - leaderboard_entries, waitlist: exist but are unwired for MVP. Leave their
   schema alone.
