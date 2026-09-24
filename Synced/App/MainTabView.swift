@@ -1,19 +1,19 @@
 import SwiftUI
 import UIKit
 
+/// Signed-in root: Week and Progress. Each tab owns its own header with the
+/// profile icon, so Profile opens from either.
 struct MainTabView: View {
     init() {
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = UIColor(SYN.bg)
-        appearance.shadowColor = .clear
-        appearance.shadowImage = UIImage()
-        appearance.backgroundImage = UIImage()
-        // Strip the iOS 18+ pill/glass selection background so only the icon/label colors change.
+        appearance.shadowColor = UIColor(SYN.border)
+        // Strip the iOS 18+ selection pill so only icon and label colors change.
         appearance.selectionIndicatorTintColor = .clear
         appearance.selectionIndicatorImage = UIImage()
 
-        let labelFont = UIFont.systemFont(ofSize: 10, weight: .medium)
+        let labelFont = UIFont(name: "Geist-Medium", size: 10) ?? .systemFont(ofSize: 10, weight: .medium)
         let normal: [NSAttributedString.Key: Any] = [
             .foregroundColor: UIColor(SYN.textFaint),
             .font: labelFont,
@@ -22,7 +22,6 @@ struct MainTabView: View {
             .foregroundColor: UIColor(SYN.cyan),
             .font: labelFont,
         ]
-
         for item in [
             appearance.stackedLayoutAppearance,
             appearance.inlineLayoutAppearance,
@@ -36,22 +35,16 @@ struct MainTabView: View {
 
         UITabBar.appearance().standardAppearance = appearance
         UITabBar.appearance().scrollEdgeAppearance = appearance
-        UITabBar.appearance().tintColor = UIColor(SYN.cyan)
-        UITabBar.appearance().unselectedItemTintColor = UIColor(SYN.textFaint)
     }
 
     var body: some View {
         TabView {
-            HomeView()
-                .tabItem { Label("Home", systemImage: "house.fill") }
+            WeekView()
+                .tabItem { Label("Week", systemImage: "calendar") }
 
-            StatsView()
-                .tabItem { Label("Stats", systemImage: "chart.line.uptrend.xyaxis") }
-
-            EducateView()
-                .tabItem { Label("Learn", systemImage: "book.fill") }
+            ProgressScreen()
+                .tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }
         }
         .tint(SYN.cyan)
-        .preferredColorScheme(.dark)
     }
 }

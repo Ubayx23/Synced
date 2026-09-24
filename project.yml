@@ -47,6 +47,15 @@ targets:
         UIRequiredDeviceCapabilities:
           - arm64
         UIUserInterfaceStyle: Dark
+        UIAppFonts:
+          - Geist-Regular.ttf
+          - Geist-Medium.ttf
+          - Geist-SemiBold.ttf
+          - Geist-Bold.ttf
+          - GeistMono-Regular.ttf
+          - GeistMono-Medium.ttf
+          - GeistMono-SemiBold.ttf
+          - GeistMono-Bold.ttf
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: page.synced.app
