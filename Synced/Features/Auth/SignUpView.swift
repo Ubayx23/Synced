@@ -26,34 +26,6 @@ struct SignUpView: View {
         hasMinLength && hasUppercase && hasLowercase && hasNumber
     }
 
-    private var passwordStrengthScore: Int {
-        [hasMinLength, hasUppercase, hasLowercase, hasNumber].filter { $0 }.count
-    }
-
-    private var strengthColor: Color {
-        switch passwordStrengthScore {
-        case 4: return SYN.green
-        case 3: return SYN.amber
-        default: return SYN.red
-        }
-    }
-
-    private var strengthLabel: String {
-        switch passwordStrengthScore {
-        case 4: return "Strong"
-        case 3: return "Medium"
-        default: return "Weak"
-        }
-    }
-
-    private var strengthFillFraction: CGFloat {
-        switch passwordStrengthScore {
-        case 4: return 1.0
-        case 3: return 2.0 / 3.0
-        default: return 1.0 / 3.0
-        }
-    }
-
     private var canSubmit: Bool {
         !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && passwordRulesPass
@@ -64,21 +36,16 @@ struct SignUpView: View {
             VStack(spacing: 0) {
                 backRow
 
-                // Centers the form as one unit in the space above the legal line,
-                // and scrolls when the keyboard leaves too little room.
-                GeometryReader { proxy in
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            Spacer(minLength: 0)
-                            form
-                            Spacer(minLength: 0)
-                        }
-                        .frame(minHeight: proxy.size.height)
-                    }
-                    .scrollIndicators(.hidden)
-                    .scrollBounceBehavior(.basedOnSize)
-                    .scrollDismissesKeyboard(.interactively)
+                // Anchored to the top; the button and link follow the form
+                // directly, and any space below them is left empty.
+                ScrollView {
+                    form
+                        .padding(.top, Spacing.s)
+                        .padding(.bottom, Spacing.lg)
                 }
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollDismissesKeyboard(.interactively)
             }
         } cta: {
             Text("by creating an account you agree to our [Terms](https://synced.page/terms) and [Privacy Policy](https://synced.page/privacy)")
@@ -89,7 +56,6 @@ struct SignUpView: View {
                 .tint(SYN.cyan)
         }
         .disabled(isSubmitting)
-        .animation(.easeOut(duration: 0.2), value: password.isEmpty)
         .task { withAnimation { phase = 1 } }
     }
 
@@ -110,28 +76,22 @@ struct SignUpView: View {
 
     private var form: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Secondary brand appearance; Welcome owns the large wordmark.
-            SyncedWordmark(size: 28)
-                .phaseFadeUp(phase: phase, delay: 0.10)
-
-            Spacer().frame(height: Spacing.l)
-
             Text("create your account")
                 .font(.synDisplay(30, weight: .heavy))
                 .foregroundStyle(SYN.text)
                 .kerning(-0.9)
                 .shadow(color: SYN.cyan.opacity(0.25), radius: 12)
-                .phaseFadeUp(phase: phase, delay: 0.18)
+                .phaseFadeUp(phase: phase, delay: 0.10)
 
-            Spacer().frame(height: 10)
+            Spacer().frame(height: Spacing.s)
 
             Text("Save your sessions so Synced can plan your week and spot what actually works for you.")
                 .font(.synText(15))
                 .foregroundStyle(SYN.textDim)
                 .frame(maxWidth: 320, alignment: .leading)
-                .phaseFadeUp(phase: phase, delay: 0.26)
+                .phaseFadeUp(phase: phase, delay: 0.18)
 
-            Spacer().frame(height: 32)
+            Spacer().frame(height: Spacing.xl)
 
             SpecInput(
                 value: $email,
@@ -141,9 +101,9 @@ struct SignUpView: View {
                 textContentType: .emailAddress,
                 autocap: .never
             )
-            .phaseFadeUp(phase: phase, delay: 0.46)
+            .phaseFadeUp(phase: phase, delay: 0.26)
 
-            Spacer().frame(height: 16)
+            Spacer().frame(height: Spacing.md)
 
             SpecInput(
                 value: $password,
@@ -153,17 +113,15 @@ struct SignUpView: View {
                 autocap: .never,
                 isSecure: true
             )
-            .phaseFadeUp(phase: phase, delay: 0.52)
+            .phaseFadeUp(phase: phase, delay: 0.32)
 
-            // Nothing reserved until the user types, so no empty gray bar.
-            if !password.isEmpty {
-                Spacer().frame(height: 12)
-                passwordStrength
-                    .transition(.opacity)
-            }
+            Spacer().frame(height: Spacing.md)
+
+            requirements
+                .phaseFadeUp(phase: phase, delay: 0.38)
 
             if let errorMessage {
-                Spacer().frame(height: 16)
+                Spacer().frame(height: Spacing.md)
                 Text(errorMessage)
                     .font(.synText(13))
                     .foregroundStyle(SYN.red)
@@ -177,38 +135,41 @@ struct SignUpView: View {
                 .opacity(canSubmit ? 1 : 0.5)
                 .disabled(!canSubmit)
                 .allowsHitTesting(canSubmit)
-                .phaseFadeUp(phase: phase, delay: 0.64)
+                .phaseFadeUp(phase: phase, delay: 0.44)
 
             Spacer().frame(height: Spacing.md)
 
             TextLinkButton(title: "I already have an account", action: onSignIn)
                 .frame(maxWidth: .infinity)
-                .phaseFadeUp(phase: phase, delay: 0.70)
+                .phaseFadeUp(phase: phase, delay: 0.50)
         }
     }
 
-    private var passwordStrength: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(SYN.border)
-                    Capsule()
-                        .fill(strengthColor)
-                        .frame(width: password.isEmpty ? 0 : proxy.size.width * strengthFillFraction)
-                        .animation(.easeOut(duration: 0.2), value: passwordStrengthScore)
-                        .animation(.easeOut(duration: 0.2), value: password.isEmpty)
-                }
-            }
-            .frame(height: 6)
-
-            if !password.isEmpty {
-                Text(strengthLabel)
-                    .font(.synText(12))
-                    .foregroundStyle(strengthColor)
-                    .animation(.easeOut(duration: 0.2), value: passwordStrengthScore)
-            }
+    /// Visible from the start so it reads as the spec, and fills in as the
+    /// user types. This is the only strength feedback.
+    private var requirements: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            requirementRow("At least 8 characters", met: hasMinLength)
+            requirementRow("One uppercase letter", met: hasUppercase)
+            requirementRow("One lowercase letter", met: hasLowercase)
+            requirementRow("One number", met: hasNumber)
         }
+    }
+
+    private func requirementRow(_ label: String, met: Bool) -> some View {
+        HStack(spacing: Spacing.s) {
+            Image(systemName: met ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(met ? SYN.cyan : SYN.textFaint)
+                .contentTransition(.symbolEffect(.replace))
+            Text(label)
+                .font(.synText(13))
+                .foregroundStyle(met ? SYN.text : SYN.textDim)
+                .lineLimit(1)
+        }
+        .animation(.easeOut(duration: 0.2), value: met)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label), \(met ? "met" : "not met")")
     }
 
     // MARK: - Sign in with Apple (disabled until App Store pass)
