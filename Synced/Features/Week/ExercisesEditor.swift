@@ -7,7 +7,9 @@ struct ExerciseDraft: Identifiable, Equatable {
     var name: String = ""
     var sets: [SetDraft] = [SetDraft()]
 
-    init() {}
+    init(name: String = "") {
+        self.name = name
+    }
 
     init(_ exercise: LiftExercise) {
         name = exercise.name
@@ -87,8 +89,15 @@ struct ExercisesEditor: View {
                 .foregroundStyle(SYN.textFaint)
                 .fixedSize(horizontal: false, vertical: true)
 
-            ForEach($exercises) { $exercise in
-                exerciseCard($exercise)
+            if !availableSuggestions.isEmpty {
+                suggestionRow(availableSuggestions, onPick: addSuggested)
+                    .transition(.opacity)
+            }
+
+            // Bound by id, not index: a card still animating out after its
+            // exercise is removed must not read past the end of the array.
+            ForEach(exercises) { exercise in
+                exerciseCard(id: exercise.id, exercise: binding(forExercise: exercise.id))
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
@@ -99,21 +108,10 @@ struct ExercisesEditor: View {
 
     // MARK: - Exercise card
 
-    private func exerciseCard(_ exercise: Binding<ExerciseDraft>) -> some View {
-        let id = exercise.wrappedValue.id
+    private func exerciseCard(id: UUID, exercise: Binding<ExerciseDraft>) -> some View {
         let setCount = exercise.wrappedValue.sets.count
 
         return VStack(alignment: .leading, spacing: Spacing.m) {
-            // Offered while naming: when the name is empty or being edited.
-            let chips = suggestionChips(for: exercise.wrappedValue)
-            if !chips.isEmpty && (exercise.wrappedValue.name.isEmpty || focus == .name(id)) {
-                suggestionRow(chips) { name in
-                    exercise.wrappedValue.name = name
-                    if let first = exercise.wrappedValue.sets.first { focus = .weight(first.id) }
-                }
-                .transition(.opacity)
-            }
-
             HStack(spacing: Spacing.s) {
                 TextField(
                     "",
@@ -177,19 +175,29 @@ struct ExercisesEditor: View {
 
     // MARK: - Suggestions
 
-    /// Drops names already used by another exercise in this session and the
-    /// name this exercise already has.
-    private func suggestionChips(for exercise: ExerciseDraft) -> [String] {
-        let taken = Set(
-            exercises
-                .filter { $0.id != exercise.id }
-                .map { $0.name.trimmingCharacters(in: .whitespaces).lowercased() }
-        )
-        let current = exercise.name.trimmingCharacters(in: .whitespaces).lowercased()
+    /// Past exercises for the selected muscle groups, minus names already in
+    /// this session. Hidden when there is no room to add another exercise.
+    private var availableSuggestions: [String] {
+        let hasEmptyCard = exercises.contains { $0.name.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard hasEmptyCard || exercises.count < Self.maxExercises else { return [] }
+        let taken = Set(exercises.map { $0.name.trimmingCharacters(in: .whitespaces).lowercased() })
         return suggestions
-            .filter { !taken.contains($0.lowercased()) && $0.lowercased() != current }
+            .filter { !taken.contains($0.lowercased()) }
             .prefix(Self.maxSuggestions)
             .map { $0 }
+    }
+
+    /// Fills the last unnamed card if there is one, otherwise adds a new
+    /// exercise. Weight and reps are left for the user.
+    private func addSuggested(_ name: String) {
+        if let i = exercises.lastIndex(where: { $0.name.trimmingCharacters(in: .whitespaces).isEmpty }) {
+            exercises[i].name = name
+            if let first = exercises[i].sets.first { focus = .weight(first.id) }
+        } else if exercises.count < Self.maxExercises {
+            let draft = ExerciseDraft(name: name)
+            exercises.append(draft)
+            if let first = draft.sets.first { focus = .weight(first.id) }
+        }
     }
 
     private func suggestionRow(_ names: [String], onPick: @escaping (String) -> Void) -> some View {
@@ -206,11 +214,26 @@ struct ExercisesEditor: View {
                             .overlay(Capsule().stroke(SYN.border, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("Fills the exercise name")
+                    .accessibilityHint("Adds this exercise")
                 }
             }
         }
         .scrollIndicators(.hidden)
+    }
+
+    // MARK: - Bindings
+
+    /// Safe for views that outlive their exercise: reads fall back to an
+    /// empty draft and writes to a missing id are dropped.
+    private func binding(forExercise id: UUID) -> Binding<ExerciseDraft> {
+        Binding(
+            get: { exercises.first { $0.id == id } ?? ExerciseDraft() },
+            set: { newValue in
+                if let i = exercises.firstIndex(where: { $0.id == id }) {
+                    exercises[i] = newValue
+                }
+            }
+        )
     }
 
     // MARK: - Set row
