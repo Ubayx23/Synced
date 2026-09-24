@@ -95,19 +95,19 @@ Tables:
 - profiles: id (FK auth.users), username, email, training_goal,
   training_frequency, sleep_baseline, tier, score, streak, timestamps.
   For MVP only id, username, and email matter.
-- pre_lift_checkins, post_lift_checkins: repurposed as session storage for
-  MVP (see migration below). post_lift_checkins links to its pre-lift row
-  via pre_lift_id.
+- sessions: one row per planned or logged session (climb, lift, or rest).
 - leaderboard_entries, waitlist: exist but are unwired for MVP. Leave their
   schema alone.
 
-### Session columns in use (pre_lift_checkins, one row per session)
+### Session columns
+- `id UUID` primary key, `user_id UUID` (FK auth.users, on delete cascade),
+  `created_at TIMESTAMPTZ`
 - `session_type TEXT`: 'climb', 'lift', 'rest'
 - `scheduled_date DATE`: the day the session belongs to, written as
   yyyy-MM-dd in the device time zone
 - `is_planned BOOLEAN DEFAULT false`: true until the session is logged
 - `climb_grades_sent INTEGER[]`: one entry per send, e.g. [2, 2, 3]
-- `climb_grade_v INTEGER`: mirrors max(climb_grades_sent)
+- `climb_grade_v INTEGER`: mirrors max(climb_grades_sent), 0 to 17
 - `muscle_groups TEXT[]`: lift focus, e.g. ['chest', 'arms']
 - `rating INTEGER` (1 to 5, optional), `notes TEXT` (optional)
 - `lift_exercises JSONB`: written by the Log sheet, read by Progress and
@@ -115,14 +115,6 @@ Tables:
   `[{"name": "Bench press", "muscle_group": "chest", "sets": [{"weight_lbs": 185, "reps": 5}]}]`.
   `muscle_group` ties each exercise to one group for suggestions; older
   entries omit it and fall back to the session's muscle_groups.
-
-Lifter-specific columns (meal_items, meal_time, hydration, pre_workout,
-pre_workout_brand, pre_workout_caffeine_mg, and similar) become nullable and
-unused. Do not drop any column. They may come back post-MVP, and dropping
-data is not reversible.
-
-A single `sessions` table may replace these later. That is post-MVP; for now
-make additive changes to the existing tables only.
 
 ## Current code state
 Entry and routing:

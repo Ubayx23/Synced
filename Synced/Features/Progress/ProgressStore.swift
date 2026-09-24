@@ -13,7 +13,7 @@ struct LoggedSession: Identifiable, Equatable {
     let exercises: [LiftExercise]
 }
 
-/// An exercise on a lift session, stored in pre_lift_checkins.lift_exercises
+/// An exercise on a lift session, stored in sessions.lift_exercises
 /// as `[{"name": "Bench press", "muscle_group": "chest",
 /// "sets": [{"weight_lbs": 185, "reps": 5}]}]`. muscle_group is optional;
 /// exercises saved before it existed omit it.
@@ -81,11 +81,9 @@ final class ProgressStore {
     func load() async {
         do {
             let userID = try await supabase.auth.session.user.id
-            // select * so a missing optional column (lift_exercises) reads
-            // as absent instead of failing the fetch.
             let rows: [ProgressRow] = try await supabase
-                .from("pre_lift_checkins")
-                .select("*")
+                .from("sessions")
+                .select("id, session_type, scheduled_date, climb_grades_sent, climb_grade_v, lift_exercises")
                 .eq("user_id", value: userID.uuidString)
                 .eq("is_planned", value: false)
                 .order("scheduled_date", ascending: false)

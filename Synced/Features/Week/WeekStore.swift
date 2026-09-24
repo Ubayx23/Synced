@@ -18,7 +18,7 @@ enum MuscleGroup: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-/// One session is one pre_lift_checkins row. `isPlanned` is true until the
+/// One session is one row in the sessions table. `isPlanned` is true until the
 /// session is logged.
 struct Session: Identifiable, Equatable {
     let id: UUID
@@ -147,7 +147,7 @@ final class WeekStore {
         do {
             let userID = try await supabase.auth.session.user.id
             let rows: [SessionRow] = try await supabase
-                .from("pre_lift_checkins")
+                .from("sessions")
                 .select(SessionRow.columns)
                 .eq("user_id", value: userID.uuidString)
                 .gte("scheduled_date", value: Self.dayFormatter.string(from: first))
@@ -178,7 +178,7 @@ final class WeekStore {
             is_planned: true
         )
         let row: SessionRow = try await supabase
-            .from("pre_lift_checkins")
+            .from("sessions")
             .insert(payload)
             .select(SessionRow.columns)
             .single()
@@ -198,7 +198,7 @@ final class WeekStore {
         let row: SessionRow
         if let id = log.id {
             row = try await supabase
-                .from("pre_lift_checkins")
+                .from("sessions")
                 .update(fields)
                 .eq("id", value: id.uuidString)
                 .select(SessionRow.columns)
@@ -207,7 +207,7 @@ final class WeekStore {
                 .value
         } else {
             row = try await supabase
-                .from("pre_lift_checkins")
+                .from("sessions")
                 .insert(LogInsert(
                     user_id: userID.uuidString,
                     scheduled_date: Self.dayFormatter.string(from: log.date),
@@ -235,7 +235,7 @@ final class WeekStore {
         struct DeletedRow: Decodable { let id: UUID }
         let userID = try await supabase.auth.session.user.id
         let deleted: [DeletedRow] = try await supabase
-            .from("pre_lift_checkins")
+            .from("sessions")
             .delete()
             .eq("id", value: session.id.uuidString)
             .eq("user_id", value: userID.uuidString)
@@ -265,7 +265,7 @@ final class WeekStore {
         do {
             let userID = try await supabase.auth.session.user.id
             let rows: [HistoryRow] = try await supabase
-                .from("pre_lift_checkins")
+                .from("sessions")
                 .select("muscle_groups, lift_exercises")
                 .eq("user_id", value: userID.uuidString)
                 .eq("is_planned", value: false)
