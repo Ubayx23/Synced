@@ -108,10 +108,11 @@ Tables:
 - `climb_grade_v INTEGER`: mirrors max(climb_grades_sent)
 - `muscle_groups TEXT[]`: lift focus, e.g. ['chest', 'arms']
 - `rating INTEGER` (1 to 5, optional), `notes TEXT` (optional)
-- `lift_exercises JSONB`: read by Progress, not yet written by the app.
-  Expected shape:
-  `[{"name": "Bench press", "sets": [{"weight_lbs": 185, "reps": 5}]}]`.
-  Progress fetches with `select *` so the column may be absent.
+- `lift_exercises JSONB`: written by the Log sheet, read by Progress and
+  by the exercise suggestions. Shape:
+  `[{"name": "Bench press", "muscle_group": "chest", "sets": [{"weight_lbs": 185, "reps": 5}]}]`.
+  `muscle_group` ties each exercise to one group for suggestions; older
+  entries omit it and fall back to the session's muscle_groups.
 
 Lifter-specific columns (meal_items, meal_time, hydration, pre_workout,
 pre_workout_brand, pre_workout_caffeine_mg, and similar) become nullable and

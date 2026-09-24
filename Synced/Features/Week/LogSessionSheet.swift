@@ -14,6 +14,7 @@ struct LogSessionSheet: View {
     @State private var exercises: [ExerciseDraft]
     @State private var exerciseHistory: [ExerciseUse] = []
     @State private var historyLoaded = false
+    @State private var hiddenSuggestions = HiddenExerciseSuggestions.load()
     @State private var rating: Int?
     @State private var notes: String
     @State private var isSaving = false
@@ -42,17 +43,23 @@ struct LogSessionSheet: View {
         }
     }
 
-    /// Past exercises from sessions sharing any selected muscle group,
-    /// newest first, one entry per name ignoring case. Updates live as the
-    /// muscle selection changes.
-    private var exerciseSuggestions: [String] {
+    private var selectedMuscles: [MuscleGroup] {
+        MuscleGroup.allCases.filter(muscles.contains)
+    }
+
+    /// Past exercises whose muscle group is currently selected, newest first,
+    /// one per name ignoring case, minus chips the user removed. Each carries
+    /// the sets from its most recent log. Updates live with the selection.
+    private var exerciseSuggestions: [ExerciseSuggestion] {
         guard !muscles.isEmpty else { return [] }
         var seen = Set<String>()
         return exerciseHistory.compactMap { use in
-            guard !use.muscles.isDisjoint(with: muscles) else { return nil }
+            let matched = MuscleGroup.allCases.filter { muscles.contains($0) && use.muscles.contains($0) }
+            guard let muscle = matched.first else { return nil }
             let name = use.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !name.isEmpty, seen.insert(name.lowercased()).inserted else { return nil }
-            return name
+            let key = name.lowercased()
+            guard !name.isEmpty, !hiddenSuggestions.contains(key), seen.insert(key).inserted else { return nil }
+            return ExerciseSuggestion(name: name, muscle: muscle, sets: use.sets)
         }
     }
 
@@ -96,7 +103,15 @@ struct LogSessionSheet: View {
                         section("Focus", trailing: "Pick one or more") { musclePicker }
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         section("Exercises", optional: true) {
-                            ExercisesEditor(exercises: $exercises, suggestions: exerciseSuggestions)
+                            ExercisesEditor(
+                                exercises: $exercises,
+                                selectedMuscles: selectedMuscles,
+                                suggestions: exerciseSuggestions,
+                                onHideSuggestion: { suggestion in
+                                    HiddenExerciseSuggestions.hide(suggestion.name)
+                                    hiddenSuggestions.insert(suggestion.id)
+                                }
+                            )
                         }
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
@@ -429,13 +444,15 @@ struct LogSessionSheet: View {
             date: session?.date ?? Date(),
             grades: grades,
             muscles: muscles,
-            exercises: type == .lift ? exercises.cleaned : [],
+            exercises: type == .lift ? exercises.cleaned(for: selectedMuscles) : [],
             rating: rating,
             notes: notes
         )
         Task {
             do {
                 try await store.log(log)
+                // Logging an exercise again brings back a removed chip.
+                HiddenExerciseSuggestions.unhide(log.exercises.map(\.name))
                 dismiss()
             } catch {
                 isSaving = false

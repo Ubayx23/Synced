@@ -30,6 +30,9 @@ struct ProgressScreen: View {
                         failure(message)
                     default:
                         let summary = summary
+                        if let hero = summary.hero {
+                            heroView(hero)
+                        }
                         climbSection(summary)
                         liftSection(summary)
                         overallSection(summary)
@@ -124,6 +127,30 @@ struct ProgressScreen: View {
                 .lineLimit(2)
             #endif
         }
+    }
+
+    // MARK: - Hero
+
+    private func heroView(_ hero: ProgressHero) -> some View {
+        let headlineColor: Color = {
+            switch hero.tone {
+            case .dip:   return SYN.amber
+            case .early: return SYN.textDim
+            default:     return SYN.text
+            }
+        }()
+        return VStack(alignment: .leading, spacing: Spacing.xs) {
+            Text(hero.headline)
+                .font(.synDisplay(22, weight: .bold))
+                .foregroundStyle(headlineColor)
+                .kerning(-0.4)
+            Text(hero.support)
+                .font(.synText(14))
+                .foregroundStyle(SYN.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .contentTransition(.opacity)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Climb
@@ -283,7 +310,7 @@ struct ProgressScreen: View {
                     icon: SessionType.lift.symbol,
                     text: "Log a lift session to see progression here."
                 )
-            } else if s.trends.isEmpty && s.firstLogs.isEmpty {
+            } else if s.trends.isEmpty {
                 emptyState(
                     icon: SessionType.lift.symbol,
                     text: "Track exercises on your lift sessions to see weight trends here."
@@ -299,27 +326,6 @@ struct ProgressScreen: View {
                             .font(.synText(13))
                             .foregroundStyle(SYN.textFaint)
                             .frame(maxWidth: .infinity)
-                    }
-
-                    if !s.firstLogs.isEmpty {
-                        VStack(alignment: .leading, spacing: Spacing.s) {
-                            Text("First logs")
-                                .font(.synText(13))
-                                .foregroundStyle(SYN.textDim)
-                            ForEach(s.firstLogs) { trend in
-                                HStack {
-                                    Text(trend.name)
-                                        .font(.synText(15, weight: .medium))
-                                        .foregroundStyle(SYN.text)
-                                    Spacer()
-                                    Text(trend.latest.set.formatted)
-                                        .font(.synMono(13))
-                                        .foregroundStyle(SYN.textDim)
-                                }
-                            }
-                        }
-                        .padding(.top, s.trends.isEmpty ? 0 : Spacing.s)
-                        .progressCard()
                     }
                 }
             }

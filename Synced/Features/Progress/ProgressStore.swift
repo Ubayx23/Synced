@@ -14,21 +14,26 @@ struct LoggedSession: Identifiable, Equatable {
 }
 
 /// An exercise on a lift session, stored in pre_lift_checkins.lift_exercises
-/// as `[{"name": "Bench press", "sets": [{"weight_lbs": 185, "reps": 5}]}]`.
+/// as `[{"name": "Bench press", "muscle_group": "chest",
+/// "sets": [{"weight_lbs": 185, "reps": 5}]}]`. muscle_group is optional;
+/// exercises saved before it existed omit it.
 struct LiftExercise: Decodable, Equatable {
     let name: String
     let sets: [LiftSet]
+    /// The one muscle group this exercise was logged for, as a raw value.
+    let muscleGroup: String?
 
     /// Heaviest set, with more reps winning a tie.
     var topSet: LiftSet? {
         sets.max { ($0.weightLbs, $0.reps) < ($1.weightLbs, $1.reps) }
     }
 
-    private enum CodingKeys: String, CodingKey { case name, sets }
+    private enum CodingKeys: String, CodingKey { case name, sets, muscle_group }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
+        muscleGroup = (try? c.decodeIfPresent(String.self, forKey: .muscle_group)) ?? nil
         let raw = (try? c.decodeIfPresent([LenientSet].self, forKey: .sets)) ?? []
         sets = raw.compactMap(\.value)
     }
@@ -208,8 +213,11 @@ struct ProgressSummary {
 
     // Lifts
     let hasLifts: Bool
+    /// Exercises with two or more points; single-point exercises are omitted.
     let trends: [ExerciseTrend]
-    let firstLogs: [ExerciseTrend]
+
+    /// One-line answer to "how am I doing"; nil when nothing was ever logged.
+    let hero: ProgressHero?
 
     // Overall (fixed periods, not the window)
     let sessionsThisMonth: Int
@@ -235,14 +243,15 @@ struct ProgressSummary {
         let top = climbs.flatMap(\.grades).max()
         topGrade = top
 
+        let prevStart = cal.date(byAdding: .day, value: -59, to: today) ?? today
+        let prevTop = sessions
+            .filter { $0.type == .climb && $0.date >= prevStart && $0.date < (windowStart ?? today) }
+            .flatMap(\.grades)
+            .max()
+
         if let top {
             switch window {
             case .last30:
-                let prevStart = cal.date(byAdding: .day, value: -59, to: today) ?? today
-                let prevTop = sessions
-                    .filter { $0.type == .climb && $0.date >= prevStart && $0.date < (windowStart ?? today) }
-                    .flatMap(\.grades)
-                    .max()
                 if let prevTop {
                     let delta = top - prevTop
                     if delta > 0 {
@@ -323,7 +332,31 @@ struct ProgressSummary {
             .map { ExerciseTrend(name: $0.name, points: $0.points.sorted { $0.date < $1.date }) }
             .sorted { $0.latest.date > $1.latest.date }
         trends = all.filter { $0.points.count >= 2 }
-        firstLogs = all.filter { $0.points.count == 1 }
+
+        // Hero
+        let climbDelta: Int?
+        switch window {
+        case .last30:
+            climbDelta = top.flatMap { t in prevTop.map { t - $0 } }
+        case .allTime:
+            // No previous window: compare the latest climbing day with the
+            // earlier peak, or with the first day when still climbing.
+            if let last = gradePoints.last, let first = gradePoints.first, gradePoints.count >= 2 {
+                let earlierPeak = gradePoints.dropLast().map(\.grade).max() ?? last.grade
+                climbDelta = last.grade < earlierPeak ? last.grade - earlierPeak : (top ?? last.grade) - first.grade
+            } else {
+                climbDelta = nil
+            }
+        }
+        hero = ProgressHero(
+            everLogged: !sessions.isEmpty,
+            sessionsInWindow: inWindow.count,
+            window: window,
+            topGrade: top,
+            previousTop: prevTop,
+            climbDelta: climbDelta,
+            trends: trends
+        )
 
         // Overall
         let monthStart = cal.dateInterval(of: .month, for: today)?.start ?? today
@@ -331,6 +364,94 @@ struct ProgressSummary {
         let weekSessions = sessions.filter { $0.date >= thisWeek && $0.date <= now }
         sessionsThisWeek = weekSessions.count
         restDaysThisWeek = Set(weekSessions.filter { $0.type == .rest }.map { cal.startOfDay(for: $0.date) }).count
+    }
+}
+
+/// The single headline at the top of Progress. Rules are checked in a fixed
+/// order so exactly one applies: nothing logged (no hero), too little data,
+/// a dip, moving forward, then holding steady. Dip is checked before moving
+/// forward so a regression is never hidden behind a mixed picture.
+struct ProgressHero {
+    enum Tone { case early, forward, steady, dip }
+
+    let tone: Tone
+    let headline: String
+    let support: String
+
+    static let minSessions = 3
+
+    init?(
+        everLogged: Bool,
+        sessionsInWindow: Int,
+        window: ProgressWindow,
+        topGrade: Int?,
+        previousTop: Int?,
+        climbDelta: Int?,
+        trends: [ExerciseTrend]
+    ) {
+        guard everLogged else { return nil }
+
+        guard sessionsInWindow >= Self.minSessions else {
+            tone = .early
+            headline = "Log a few more sessions."
+            support = "Your progress picture fills in after \(Self.minSessions)+ sessions."
+            return
+        }
+
+        let ups = trends.filter { trend in
+            trend.previous.map { trend.latest.set.weightLbs > $0.set.weightLbs } ?? false
+        }.count
+        let downs = trends.filter(\.isDowntrend).count
+        let count = trends.count
+        let liftsDown = count > 0 && downs * 2 > count
+        let liftsUp = count > 0 && ups * 2 >= count
+        let delta = climbDelta ?? 0
+        let monthly = window == .last30
+
+        func lifts(_ n: Int) -> String { n == 1 ? "lift" : "lifts" }
+        func grades(_ n: Int) -> String { n == 1 ? "grade" : "grades" }
+
+        if delta < 0 || liftsDown {
+            tone = .dip
+            headline = "You're in a dip."
+            var parts: [String] = []
+            if delta < 0 {
+                parts.append(monthly
+                    ? "Top grade down \(-delta) from last month."
+                    : "Latest top grade is \(-delta) below your peak.")
+            }
+            if downs > 0 {
+                parts.append("\(downs) \(lifts(downs)) trending lighter.")
+            }
+            if liftsDown { parts.append("Might be time to deload.") }
+            support = parts.joined(separator: " ")
+        } else if delta > 0 || liftsUp {
+            tone = .forward
+            headline = "You're moving forward."
+            var parts: [String] = []
+            if delta > 0 { parts.append("+\(delta) climbing \(grades(delta))") }
+            if ups > 0 { parts.append("\(ups) of \(count) tracked \(lifts(count)) improving") }
+            support = parts.joined(separator: " and ") + "."
+        } else {
+            tone = .steady
+            headline = "You're holding steady."
+            var parts: [String] = []
+            if let topGrade {
+                if monthly, let previousTop, previousTop == topGrade {
+                    parts.append("V\(topGrade) top for the second month")
+                } else {
+                    parts.append("V\(topGrade) top \(monthly ? "this month" : "so far")")
+                }
+            }
+            if count > 0 {
+                parts.append(ups == 0 && downs == 0
+                    ? "\(count) tracked \(lifts(count)) unchanged"
+                    : "\(ups) up and \(downs) down across \(count) tracked \(lifts(count))")
+            }
+            support = parts.isEmpty
+                ? "Log climbs or track lift exercises to see which way you're heading."
+                : parts.joined(separator: ", ") + "."
+        }
     }
 }
 

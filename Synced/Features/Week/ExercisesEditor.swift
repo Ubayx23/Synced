@@ -1,20 +1,42 @@
 import SwiftUI
 
 /// Editable exercise on the Log session sheet. Numbers stay as text while
-/// typing; `cleaned` turns drafts into saveable exercises.
+/// typing; `cleaned(for:)` turns drafts into saveable exercises.
 struct ExerciseDraft: Identifiable, Equatable {
     let id = UUID()
     var name: String = ""
     var sets: [SetDraft] = [SetDraft()]
+    /// The muscle group this exercise counts for. Resolved against the
+    /// session's selection by `effectiveMuscle(in:)`.
+    var muscle: MuscleGroup?
 
-    init(name: String = "") {
-        self.name = name
+    init(muscle: MuscleGroup? = nil) {
+        self.muscle = muscle
     }
 
     init(_ exercise: LiftExercise) {
         name = exercise.name
+        muscle = exercise.muscleGroup.flatMap(MuscleGroup.init(rawValue:))
         sets = exercise.sets.map(SetDraft.init)
         if sets.isEmpty { sets = [SetDraft()] }
+    }
+
+    /// A suggestion pre-fills the name, group, and last time's sets.
+    init(_ suggestion: ExerciseSuggestion) {
+        name = suggestion.name
+        muscle = suggestion.muscle
+        sets = suggestion.sets.map(SetDraft.init)
+        if sets.isEmpty { sets = [SetDraft()] }
+    }
+
+    /// Own group if it is still selected, otherwise the first selected group.
+    func effectiveMuscle(in selected: [MuscleGroup]) -> MuscleGroup? {
+        if let muscle, selected.contains(muscle) { return muscle }
+        return selected.first
+    }
+
+    var hasNoSetValues: Bool {
+        sets.allSatisfy { $0.weight.isEmpty && $0.reps.isEmpty }
     }
 }
 
@@ -52,26 +74,34 @@ struct SetDraft: Identifiable, Equatable {
 extension Array where Element == ExerciseDraft {
     /// Silent cleanup on save: drops unnamed exercises, invalid sets, and
     /// exercises left with no sets. Names are kept as typed apart from
-    /// surrounding whitespace.
-    var cleaned: [LiftExercise] {
+    /// surrounding whitespace. Each exercise is tagged with one muscle group.
+    func cleaned(for selected: [MuscleGroup]) -> [LiftExercise] {
         compactMap { draft in
             let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
             let sets = draft.sets.compactMap(\.value)
             guard !name.isEmpty, !sets.isEmpty else { return nil }
-            return LiftExercise(name: name, sets: sets)
+            return LiftExercise(
+                name: name,
+                sets: sets,
+                muscleGroup: draft.effectiveMuscle(in: selected)?.rawValue
+            )
         }
     }
 }
 
-/// Optional exercises section for lift sessions: inline name, sets of
-/// weight and reps, add and remove controls. No validation UI.
+/// Optional exercises section for lift sessions: suggestion chips from past
+/// sessions, inline name, muscle group, sets of weight and reps, and add and
+/// remove controls. No validation UI.
 struct ExercisesEditor: View {
     @Binding var exercises: [ExerciseDraft]
-    /// Past exercise names for the selected muscle groups, newest first.
-    var suggestions: [String] = []
+    /// Session's selected muscle groups, in grid order.
+    var selectedMuscles: [MuscleGroup] = []
+    /// Past exercises for the selected muscle groups, newest first.
+    var suggestions: [ExerciseSuggestion] = []
+    /// Removes a chip from future suggestions.
+    var onHideSuggestion: (ExerciseSuggestion) -> Void = { _ in }
 
     static let maxSuggestions = 6
-
     static let maxExercises = 8
     static let maxSets = 10
 
@@ -90,7 +120,7 @@ struct ExercisesEditor: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if !availableSuggestions.isEmpty {
-                suggestionRow(availableSuggestions, onPick: addSuggested)
+                suggestionRow
                     .transition(.opacity)
             }
 
@@ -104,6 +134,7 @@ struct ExercisesEditor: View {
             addExerciseButton
         }
         .animation(.easeOut(duration: 0.2), value: exercises)
+        .animation(.easeOut(duration: 0.2), value: suggestions)
     }
 
     // MARK: - Exercise card
@@ -130,6 +161,11 @@ struct ExercisesEditor: View {
                 removeButton(label: "Remove exercise") {
                     exercises.removeAll { $0.id == id }
                 }
+            }
+
+            // Only needed when the session covers more than one group.
+            if selectedMuscles.count > 1 {
+                musclePicker(for: exercise)
             }
 
             VStack(spacing: Spacing.s) {
@@ -173,48 +209,90 @@ struct ExercisesEditor: View {
         )
     }
 
+    /// Which selected group this exercise counts for, so it is suggested
+    /// under that group next time.
+    private func musclePicker(for exercise: Binding<ExerciseDraft>) -> some View {
+        let current = exercise.wrappedValue.effectiveMuscle(in: selectedMuscles)
+        return HStack(spacing: Spacing.xs) {
+            Text("For")
+                .font(.synText(12))
+                .foregroundStyle(SYN.textFaint)
+            ForEach(selectedMuscles) { muscle in
+                let selected = current == muscle
+                Button { exercise.wrappedValue.muscle = muscle } label: {
+                    Text(muscle.title)
+                        .font(.synText(12, weight: .semibold))
+                        .foregroundStyle(selected ? SessionType.lift.color : SYN.textFaint)
+                        .padding(.horizontal, Spacing.s)
+                        .frame(height: 26)
+                        .background(Capsule().fill(selected ? SessionType.lift.color.opacity(0.12) : .clear))
+                        .overlay(Capsule().stroke(selected ? SessionType.lift.color.opacity(0.6) : SYN.border, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Counts for \(muscle.title)")
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+    }
+
     // MARK: - Suggestions
 
     /// Past exercises for the selected muscle groups, minus names already in
     /// this session. Hidden when there is no room to add another exercise.
-    private var availableSuggestions: [String] {
+    private var availableSuggestions: [ExerciseSuggestion] {
         let hasEmptyCard = exercises.contains { $0.name.trimmingCharacters(in: .whitespaces).isEmpty }
         guard hasEmptyCard || exercises.count < Self.maxExercises else { return [] }
         let taken = Set(exercises.map { $0.name.trimmingCharacters(in: .whitespaces).lowercased() })
         return suggestions
-            .filter { !taken.contains($0.lowercased()) }
+            .filter { !taken.contains($0.id) }
             .prefix(Self.maxSuggestions)
             .map { $0 }
     }
 
     /// Fills the last unnamed card if there is one, otherwise adds a new
-    /// exercise. Weight and reps are left for the user.
-    private func addSuggested(_ name: String) {
+    /// exercise. Sets come from the last time it was logged unless the card
+    /// already has numbers in it.
+    private func addSuggested(_ suggestion: ExerciseSuggestion) {
         if let i = exercises.lastIndex(where: { $0.name.trimmingCharacters(in: .whitespaces).isEmpty }) {
-            exercises[i].name = name
-            if let first = exercises[i].sets.first { focus = .weight(first.id) }
+            let filled = ExerciseDraft(suggestion)
+            exercises[i].name = filled.name
+            exercises[i].muscle = filled.muscle
+            if exercises[i].hasNoSetValues { exercises[i].sets = filled.sets }
         } else if exercises.count < Self.maxExercises {
-            let draft = ExerciseDraft(name: name)
-            exercises.append(draft)
-            if let first = draft.sets.first { focus = .weight(first.id) }
+            exercises.append(ExerciseDraft(suggestion))
         }
+        focus = nil
     }
 
-    private func suggestionRow(_ names: [String], onPick: @escaping (String) -> Void) -> some View {
+    private var suggestionRow: some View {
         ScrollView(.horizontal) {
             HStack(spacing: Spacing.s) {
-                ForEach(names, id: \.self) { name in
-                    Button { onPick(name) } label: {
-                        Text(name)
-                            .font(.synText(13, weight: .medium))
-                            .foregroundStyle(SYN.textDim)
-                            .padding(.horizontal, Spacing.m)
-                            .frame(height: 30)
-                            .background(Capsule().fill(SYN.surfaceHi))
-                            .overlay(Capsule().stroke(SYN.border, lineWidth: 1))
+                ForEach(availableSuggestions) { suggestion in
+                    HStack(spacing: 0) {
+                        Button { addSuggested(suggestion) } label: {
+                            Text(suggestion.name)
+                                .font(.synText(13, weight: .medium))
+                                .foregroundStyle(SYN.textDim)
+                                .padding(.leading, Spacing.m)
+                                .padding(.trailing, Spacing.xs)
+                                .frame(height: 32)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Adds this exercise with last time's sets")
+
+                        Button { onHideSuggestion(suggestion) } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(SYN.textFaint)
+                                .frame(width: 28, height: 32)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Remove \(suggestion.name) from suggestions")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Adds this exercise")
+                    .background(Capsule().fill(SYN.surfaceHi))
+                    .overlay(Capsule().stroke(SYN.border, lineWidth: 1))
                 }
             }
         }
@@ -236,8 +314,6 @@ struct ExercisesEditor: View {
         )
     }
 
-    // MARK: - Set row
-
     /// Looks the set up by id so edits land on the right row even after
     /// another set is removed.
     private func binding(for setID: UUID, in exercise: Binding<ExerciseDraft>) -> Binding<SetDraft> {
@@ -250,6 +326,8 @@ struct ExercisesEditor: View {
             }
         )
     }
+
+    // MARK: - Set row
 
     private func setRow(number: Int, set: Binding<SetDraft>, onRemove: @escaping () -> Void) -> some View {
         HStack(spacing: Spacing.s) {
@@ -319,7 +397,7 @@ struct ExercisesEditor: View {
         return VStack(spacing: Spacing.xs) {
             Button {
                 // Starts with one empty set so the numbers have somewhere to go.
-                let draft = ExerciseDraft()
+                let draft = ExerciseDraft(muscle: selectedMuscles.first)
                 exercises.append(draft)
                 focus = .name(draft.id)
             } label: {

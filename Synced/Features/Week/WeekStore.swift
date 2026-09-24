@@ -35,10 +35,53 @@ struct Session: Identifiable, Equatable {
     var topGrade: Int? { grades.max() }
 }
 
-/// One past use of an exercise name and the muscle groups of its session.
+/// One past use of an exercise: its name, the muscle groups it counts
+/// for, and the sets logged that time.
 struct ExerciseUse {
     let name: String
+    /// The exercise's own muscle_group when saved with one. Older exercises
+    /// without it fall back to every muscle group on their session.
     let muscles: Set<MuscleGroup>
+    let sets: [LiftSet]
+}
+
+/// A past exercise offered as a chip on the Log sheet.
+struct ExerciseSuggestion: Identifiable, Equatable {
+    let name: String
+    /// The selected muscle group this suggestion matched.
+    let muscle: MuscleGroup?
+    /// Sets from the most recent time it was logged, used to pre-fill.
+    let sets: [LiftSet]
+    var id: String { name.lowercased() }
+}
+
+/// Suggestion chips the user removed. Stored on this device per account;
+/// logging the exercise again brings it back.
+enum HiddenExerciseSuggestions {
+    private static var key: String? {
+        supabase.auth.currentSession.map { "hiddenExerciseSuggestions.\($0.user.id.uuidString)" }
+    }
+
+    static func load() -> Set<String> {
+        guard let key else { return [] }
+        return Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
+    }
+
+    static func hide(_ name: String) {
+        guard let key else { return }
+        var names = load()
+        names.insert(name.lowercased())
+        UserDefaults.standard.set(Array(names), forKey: key)
+    }
+
+    static func unhide(_ names: [String]) {
+        guard let key, !names.isEmpty else { return }
+        let current = load()
+        let remaining = current.subtracting(names.map { $0.lowercased() })
+        if remaining != current {
+            UserDefaults.standard.set(Array(remaining), forKey: key)
+        }
+    }
 }
 
 /// What the Log session sheet saves. `id` is nil for a fresh log.
@@ -211,8 +254,9 @@ final class WeekStore {
     }
 
     /// Every exercise from the user's logged lifts, newest session first,
-    /// tagged with that session's muscle groups. Feeds the name suggestions
-    /// on the Log sheet; a failure just means no suggestions.
+    /// tagged with its muscle group (or its session's groups for older
+    /// exercises). Feeds the suggestion chips on the Log sheet; a failure
+    /// just means no suggestions.
     static func exerciseHistory() async -> [ExerciseUse] {
         struct HistoryRow: Decodable {
             let muscle_groups: [String]?
@@ -231,8 +275,15 @@ final class WeekStore {
                 .execute()
                 .value
             return rows.flatMap { row in
-                let muscles = Set((row.muscle_groups ?? []).compactMap(MuscleGroup.init(rawValue:)))
-                return (row.lift_exercises?.items ?? []).map { ExerciseUse(name: $0.name, muscles: muscles) }
+                let sessionMuscles = Set((row.muscle_groups ?? []).compactMap(MuscleGroup.init(rawValue:)))
+                return (row.lift_exercises?.items ?? []).map { exercise in
+                    let own = exercise.muscleGroup.flatMap(MuscleGroup.init(rawValue:))
+                    return ExerciseUse(
+                        name: exercise.name,
+                        muscles: own.map { [$0] } ?? sessionMuscles,
+                        sets: exercise.sets
+                    )
+                }
             }
         } catch {
             log.error("Exercise history failed: \(String(describing: error), privacy: .public)")
@@ -303,19 +354,22 @@ private struct LiftExerciseList: Decodable {
 }
 
 extension LiftExercise: Encodable {
-    init(name: String, sets: [LiftSet]) {
+    init(name: String, sets: [LiftSet], muscleGroup: String? = nil) {
         self.name = name
         self.sets = sets
+        self.muscleGroup = muscleGroup
     }
 
-    private enum EncodingKeys: String, CodingKey { case name, sets }
+    private enum EncodingKeys: String, CodingKey { case name, muscle_group, sets }
     private enum SetKeys: String, CodingKey { case weight_lbs, reps }
 
-    /// Writes the shape Progress reads:
-    /// {"name": "Bench press", "sets": [{"weight_lbs": 185, "reps": 5}]}
+    /// Writes the shape Progress reads, plus the optional muscle group:
+    /// {"name": "Bench press", "muscle_group": "chest",
+    ///  "sets": [{"weight_lbs": 185, "reps": 5}]}
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: EncodingKeys.self)
         try c.encode(name, forKey: .name)
+        try c.encodeIfPresent(muscleGroup, forKey: .muscle_group)
         var list = c.nestedUnkeyedContainer(forKey: .sets)
         for set in sets {
             var item = list.nestedContainer(keyedBy: SetKeys.self)
