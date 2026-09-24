@@ -5,14 +5,14 @@ import SwiftUI
 ///
 /// Most screens look like:
 /// ```
-/// ScreenShell(progress: ScreenProgress.s2, onBack: onBack) {
+/// ScreenShell(progress: 0.5, onBack: onBack) {
 ///     screen body…
 /// } cta: {
 ///     PrimaryButton(title: "Continue") { onNext() }
 /// }
 /// ```
 struct ScreenShell<Content: View, CTAContent: View>: View {
-    var progress: Double?           // nil → no header (e.g. Welcome)
+    var progress: Double?           // nil → no header
     var onBack: (() -> Void)?
     var ambient: Bool = true
     @ViewBuilder var content: Content

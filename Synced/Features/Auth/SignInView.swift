@@ -2,7 +2,7 @@ import SwiftUI
 import Supabase
 
 /// Sign-in screen for returning users. Presented as a full-screen cover from
-/// S1Welcome via the "I already have an account" link.
+/// SignUpView's "I already have an account" link.
 struct SignInView: View {
     var onClose: () -> Void
 

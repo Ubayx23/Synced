@@ -1,12 +1,12 @@
 import SwiftUI
 
 /// 240×240 luminous orb with three orbital rings and a pulsing core.
-/// Used on S5 (hook) and S12 (tier reveal) — color/icon vary by usage.
+/// Color and icon are configurable per usage.
 struct LuminousOrb: View {
     var diameter: CGFloat = 240
     var color: Color = SYN.cyan
     var icon: AnyView? = nil
-    /// Tier reveal mode renders the inner core in the tier's color rather than
+    /// When true, renders the inner core in `color` rather than
     /// the cyan→white default.
     var tierMode: Bool = false
 

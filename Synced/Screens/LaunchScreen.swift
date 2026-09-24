@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Animated splash. Layout mirrors `S1Welcome` exactly so the icon and
-/// wordmark land at the same screen position on either side of the crossfade.
+/// Animated splash shown on every cold launch before auth or the Week view.
 struct LaunchScreen: View {
     let onComplete: () -> Void
 
@@ -104,7 +103,7 @@ struct LaunchScreen: View {
     // MARK: - Animation timeline
 
     private func runAnimation() {
-        // Phase 1 — dot springs in, glow ripples out.
+        // Phase 1: dot springs in, glow ripples out.
         withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
             dotScale = 1.0
         }
@@ -113,21 +112,21 @@ struct LaunchScreen: View {
             dotGlowOpacity = 0
         }
 
-        // Phase 2 — inner arcs draw in.
+        // Phase 2: inner arcs draw in.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             withAnimation(.easeOut(duration: 0.45)) {
                 innerArcsProgress = 1.0
             }
         }
 
-        // Phase 3 — outer arcs draw in.
+        // Phase 3: outer arcs draw in.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.50) {
             withAnimation(.easeOut(duration: 0.55)) {
                 outerArcsProgress = 1.0
             }
         }
 
-        // Phase 4 — wordmark.
+        // Phase 4: wordmark.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
             withAnimation(.easeOut(duration: 0.45)) {
                 wordmarkOpacity = 1.0
@@ -135,7 +134,7 @@ struct LaunchScreen: View {
             }
         }
 
-        // Phase 5 — hold, then hand off. Parent owns the crossfade.
+        // Phase 5: hold, then hand off. Parent owns the crossfade.
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             onComplete()
         }

@@ -3,14 +3,11 @@ import AuthenticationServices
 import CryptoKit
 import Supabase
 
-/// First account-creation screen. Sits in onboarding between S9Notifications
-/// and S12TierReveal. Wiring into OnboardingFlow's switch is a separate task,
-/// so the step number and progress value are local constants for now.
+/// Account-creation screen and the default signed-out entry. The "I already
+/// have an account" link hands off to SignInView via `onSignIn`.
 struct SignUpView: View {
-    var onBack: () -> Void
+    var onSignIn: () -> Void
     var onSuccess: () -> Void
-
-    @Environment(OnboardingModel.self) private var model
 
     @State private var phase = 0
     @State private var email = ""
@@ -62,85 +59,103 @@ struct SignUpView: View {
     }
 
     var body: some View {
-        ScreenShell(progress: ScreenProgress.signUp, onBack: onBack, ambient: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                EyebrowTag(text: "Step \(ScreenProgress.signUpStep) of \(ScreenProgress.total)")
-                    .phaseFadeUp(phase: phase, delay: 0.05)
-
-                Spacer().frame(height: 16)
-
-                Text("create your account")
-                    .font(.synDisplay(30, weight: .heavy))
-                    .foregroundStyle(SYN.text)
-                    .kerning(-0.9)
-                    .shadow(color: SYN.cyan.opacity(0.25), radius: 12)
-                    .phaseFadeUp(phase: phase, delay: 0.18)
-
-                Spacer().frame(height: 10)
-
-                Text("Save your sessions so Synced can plan your week and spot what actually works for you.")
-                    .font(.synText(15))
-                    .foregroundStyle(SYN.textDim)
-                    .frame(maxWidth: 320, alignment: .leading)
-                    .phaseFadeUp(phase: phase, delay: 0.26)
-
-                Spacer().frame(height: 32)
-
-                SpecInput(
-                    value: $email,
-                    placeholder: "you@example.com",
-                    label: "Email",
-                    keyboardType: .emailAddress,
-                    textContentType: .emailAddress,
-                    autocap: .never
-                )
-                .phaseFadeUp(phase: phase, delay: 0.46)
-
-                Spacer().frame(height: 16)
-
-                SpecInput(
-                    value: $password,
-                    placeholder: "At least 8 characters",
-                    label: "Password",
-                    textContentType: .password,
-                    autocap: .never,
-                    isSecure: true
-                )
-                .phaseFadeUp(phase: phase, delay: 0.52)
-
-                Spacer().frame(height: 12)
-
-                passwordStrength
-                    .phaseFadeUp(phase: phase, delay: 0.58)
-
-                if let errorMessage {
-                    Spacer().frame(height: 16)
-                    Text(errorMessage)
-                        .font(.synText(13))
-                        .foregroundStyle(SYN.red)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
+        ScreenShell(progress: nil, onBack: nil, ambient: false) {
+            // Centers the form as one unit in the space above the legal line,
+            // and scrolls when the keyboard leaves too little room.
+            GeometryReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        form
+                        Spacer(minLength: 0)
+                    }
+                    .frame(minHeight: proxy.size.height)
                 }
-
-                Spacer()
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollDismissesKeyboard(.interactively)
             }
         } cta: {
-            VStack(spacing: 12) {
-                PrimaryButton(title: "Create account", action: submitEmail)
-                    .opacity(canSubmit ? 1 : 0.5)
-                    .disabled(!canSubmit)
-                    .allowsHitTesting(canSubmit)
-
-                Text("by creating an account you agree to our [Terms](https://synced.page/terms) and [Privacy Policy](https://synced.page/privacy)")
-                    .font(.synText(11))
-                    .foregroundStyle(SYN.textFaint)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .tint(SYN.cyan)
-            }
+            Text("by creating an account you agree to our [Terms](https://synced.page/terms) and [Privacy Policy](https://synced.page/privacy)")
+                .font(.synText(11))
+                .foregroundStyle(SYN.textFaint)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .tint(SYN.cyan)
         }
         .disabled(isSubmitting)
         .task { withAnimation { phase = 1 } }
+    }
+
+    private var form: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("create your account")
+                .font(.synDisplay(30, weight: .heavy))
+                .foregroundStyle(SYN.text)
+                .kerning(-0.9)
+                .shadow(color: SYN.cyan.opacity(0.25), radius: 12)
+                .phaseFadeUp(phase: phase, delay: 0.18)
+
+            Spacer().frame(height: 10)
+
+            Text("Save your sessions so Synced can plan your week and spot what actually works for you.")
+                .font(.synText(15))
+                .foregroundStyle(SYN.textDim)
+                .frame(maxWidth: 320, alignment: .leading)
+                .phaseFadeUp(phase: phase, delay: 0.26)
+
+            Spacer().frame(height: 32)
+
+            SpecInput(
+                value: $email,
+                placeholder: "you@example.com",
+                label: "Email",
+                keyboardType: .emailAddress,
+                textContentType: .emailAddress,
+                autocap: .never
+            )
+            .phaseFadeUp(phase: phase, delay: 0.46)
+
+            Spacer().frame(height: 16)
+
+            SpecInput(
+                value: $password,
+                placeholder: "At least 8 characters",
+                label: "Password",
+                textContentType: .password,
+                autocap: .never,
+                isSecure: true
+            )
+            .phaseFadeUp(phase: phase, delay: 0.52)
+
+            Spacer().frame(height: 12)
+
+            passwordStrength
+                .phaseFadeUp(phase: phase, delay: 0.58)
+
+            if let errorMessage {
+                Spacer().frame(height: 16)
+                Text(errorMessage)
+                    .font(.synText(13))
+                    .foregroundStyle(SYN.red)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+
+            Spacer().frame(height: Spacing.xl)
+
+            PrimaryButton(title: "Create account", action: submitEmail)
+                .opacity(canSubmit ? 1 : 0.5)
+                .disabled(!canSubmit)
+                .allowsHitTesting(canSubmit)
+                .phaseFadeUp(phase: phase, delay: 0.64)
+
+            Spacer().frame(height: Spacing.md)
+
+            TextLinkButton(title: "I already have an account", action: onSignIn)
+                .frame(maxWidth: .infinity)
+                .phaseFadeUp(phase: phase, delay: 0.70)
+        }
     }
 
     private var passwordStrength: some View {
@@ -198,7 +213,7 @@ struct SignUpView: View {
 
     // MARK: - Auth flow
 
-    /// Runs an auth action, then writes the onboarding profile, then advances.
+    /// Runs an auth action, then writes the profile, then advances.
     /// Any thrown error surfaces inline and blocks navigation.
     private func submit(_ authAction: @escaping () async throws -> Void) {
         guard !isSubmitting else { return }
@@ -250,22 +265,16 @@ struct SignUpView: View {
         }
     }
 
-    /// Writes the live onboarding answers from the shared `OnboardingModel`
-    /// into the user's profiles row. The handle_new_user() trigger creates
-    /// the row at signup, but we upsert here so a missed trigger or repeated
-    /// run still lands the data. The profiles table has no age column, so
-    /// `model.age` is not persisted here.
+    /// Writes the user's email into their profiles row. The handle_new_user()
+    /// trigger creates the row at signup, but we upsert here so a missed
+    /// trigger or repeated run still lands the data.
     private func writeProfile() async throws {
         guard let user = supabase.auth.currentSession?.user else {
             throw SignUpError.noSession
         }
         let payload = ProfileUpsert(
             id: user.id.uuidString,
-            email: user.email ?? "",
-            username: model.firstName,
-            training_goal: model.goal?.rawValue ?? "",
-            training_frequency: model.daysPerWeek,
-            sleep_baseline: model.sleepHours
+            email: user.email ?? ""
         )
         try await supabase
             .from("profiles")
@@ -304,10 +313,6 @@ struct SignUpView: View {
 private struct ProfileUpsert: Encodable {
     let id: String
     let email: String
-    let username: String
-    let training_goal: String
-    let training_frequency: Int
-    let sleep_baseline: Double
 }
 
 private enum SignUpError: LocalizedError {
@@ -322,8 +327,7 @@ private enum SignUpError: LocalizedError {
 #Preview {
     ZStack {
         SYN.bg.ignoresSafeArea()
-        SignUpView(onBack: {}, onSuccess: {})
-            .environment(OnboardingModel())
+        SignUpView(onSignIn: {}, onSuccess: {})
     }
     .preferredColorScheme(.dark)
 }
