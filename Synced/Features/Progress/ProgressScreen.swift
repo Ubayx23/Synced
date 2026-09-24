@@ -142,14 +142,19 @@ struct ProgressScreen: View {
                             .foregroundStyle(SYN.cyan)
                             .shadow(color: SYN.cyan.opacity(0.35), radius: 14)
                             .contentTransition(.numericText())
-                        if let comparison = s.comparison {
+                        // All time's "First sent" line would repeat the compact block.
+                        if let comparison = s.comparison, s.showsGradeChart || s.window == .last30 {
                             Text(comparison)
                                 .font(.synText(13, weight: .medium))
-                                .foregroundStyle(comparisonColor(comparison))
+                                .foregroundStyle(comparisonColor(comparison, downtrend: s.climbDowntrend))
                         }
                     }
 
-                    gradeChart(s)
+                    if s.showsGradeChart {
+                        gradeChart(s)
+                    } else {
+                        sparseClimbBlock(s)
+                    }
 
                     VStack(alignment: .leading, spacing: Spacing.s) {
                         Text(s.window == .last30 ? "Sends this month" : "Sends all time")
@@ -185,34 +190,64 @@ struct ProgressScreen: View {
         }
     }
 
-    private func comparisonColor(_ text: String) -> Color {
+    /// Regression is information, not failure: amber, never red.
+    private func comparisonColor(_ text: String, downtrend: Bool) -> Color {
+        if downtrend || text.hasPrefix("-") { return SYN.amber }
         if text.hasPrefix("+") { return SYN.green }
-        if text.hasPrefix("-") { return SYN.amber }
         return SYN.textFaint
     }
 
+    /// Under three climbing days a line would overstate the trend, so show
+    /// the first send and when the chart will appear instead.
+    private func sparseClimbBlock(_ s: ProgressSummary) -> some View {
+        let remaining = ProgressSummary.minChartPoints - s.gradePoints.count
+        return VStack(alignment: .leading, spacing: Spacing.xs) {
+            if let firstSend = s.firstSendText {
+                Text(firstSend)
+                    .font(.synText(14, weight: .medium))
+                    .foregroundStyle(SYN.text)
+            }
+            Text("Log \(remaining) more climbing \(remaining == 1 ? "day" : "days") to see your trend chart.")
+                .font(.synText(13))
+                .foregroundStyle(SYN.textFaint)
+        }
+        .padding(Spacing.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: Radius.input, style: .continuous)
+                .fill(SYN.bg.opacity(0.6))
+        )
+    }
+
+    /// Y and X fit the data: grades from one below the lowest to two above
+    /// the highest, dates from the first climb to today.
     private func gradeChart(_ s: ProgressSummary) -> some View {
-        Chart(s.weeklyTop) { point in
+        let lineColor = s.climbDowntrend ? SYN.amber : SYN.cyan
+        let span = s.gradeDomain.upperBound - s.gradeDomain.lowerBound
+        let step = span > 8 ? 2 : 1
+        let yValues = Array(stride(from: s.gradeDomain.lowerBound, through: s.gradeDomain.upperBound, by: step))
+
+        return Chart(s.gradePoints) { point in
             LineMark(
-                x: .value("Week", point.weekStart, unit: .weekOfYear),
+                x: .value("Day", point.date, unit: .day),
                 y: .value("Grade", point.grade)
             )
-            .foregroundStyle(SYN.cyan)
+            .foregroundStyle(lineColor)
             .interpolationMethod(.monotone)
             .lineStyle(StrokeStyle(lineWidth: 2))
 
             PointMark(
-                x: .value("Week", point.weekStart, unit: .weekOfYear),
+                x: .value("Day", point.date, unit: .day),
                 y: .value("Grade", point.grade)
             )
-            .foregroundStyle(SYN.cyan)
+            .foregroundStyle(lineColor)
             .symbolSize(28)
         }
         .chartXScale(domain: s.chartDomain)
-        .chartYScale(domain: 0...17)
+        .chartYScale(domain: s.gradeDomain)
         .chartYAxis {
-            AxisMarks(position: .leading, values: [0, 4, 8, 12, 17]) { value in
-                AxisGridLine().foregroundStyle(SYN.border)
+            AxisMarks(position: .leading, values: yValues) { value in
+                AxisGridLine().foregroundStyle(SYN.border.opacity(0.4))
                 AxisValueLabel {
                     if let grade = value.as(Int.self) {
                         Text("V\(grade)")
@@ -223,8 +258,8 @@ struct ProgressScreen: View {
             }
         }
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                AxisGridLine().foregroundStyle(SYN.border.opacity(0.5))
+            AxisMarks(values: .automatic(desiredCount: 3)) { value in
+                AxisGridLine().foregroundStyle(SYN.border.opacity(0.25))
                 AxisValueLabel {
                     if let date = value.as(Date.self) {
                         Text(date.formatted(.dateTime.month(.abbreviated).day()))
@@ -235,7 +270,7 @@ struct ProgressScreen: View {
             }
         }
         .frame(height: 160)
-        .accessibilityLabel("Highest grade sent per week")
+        .accessibilityLabel("Highest grade sent per climbing day")
     }
 
     // MARK: - Lifts
@@ -357,6 +392,7 @@ private struct ExerciseTrendCard: View {
     let trend: ExerciseTrend
 
     private var change: Double { trend.latest.set.weightLbs - trend.first.set.weightLbs }
+    private var showsSparkline: Bool { trend.points.count >= ProgressSummary.minChartPoints }
 
     private var changeText: String {
         let amount = abs(change).rounded() == abs(change)
@@ -368,6 +404,12 @@ private struct ExerciseTrendCard: View {
         return "Holding since \(since)"
     }
 
+    /// Amber when the latest top set is lighter than the one before it.
+    private var changeColor: Color {
+        if trend.isDowntrend || change < 0 { return SYN.amber }
+        return change > 0 ? SYN.green : SYN.textFaint
+    }
+
     var body: some View {
         HStack(spacing: Spacing.md) {
             VStack(alignment: .leading, spacing: Spacing.xs) {
@@ -375,42 +417,66 @@ private struct ExerciseTrendCard: View {
                     .font(.synText(15, weight: .semibold))
                     .foregroundStyle(SYN.text)
                     .lineLimit(1)
-                Text(trend.latest.set.formatted)
-                    .font(.synMono(17, weight: .semibold))
-                    .foregroundStyle(SYN.cyan)
+
+                if showsSparkline {
+                    Text(trend.latest.set.formatted)
+                        .font(.synMono(17, weight: .semibold))
+                        .foregroundStyle(SYN.cyan)
+                } else {
+                    // Two points: say what changed instead of drawing a line.
+                    HStack(spacing: Spacing.xs) {
+                        Text(trend.first.set.formatted)
+                            .foregroundStyle(SYN.textDim)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(SYN.textFaint)
+                        Text(trend.latest.set.formatted)
+                            .foregroundStyle(trend.isDowntrend ? SYN.amber : SYN.cyan)
+                    }
+                    .font(.synMono(15, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                }
+
                 Text(changeText)
                     .font(.synText(12, weight: .medium))
-                    .foregroundStyle(change > 0 ? SYN.green : change < 0 ? SYN.amber : SYN.textFaint)
+                    .foregroundStyle(changeColor)
             }
 
-            Spacer(minLength: Spacing.s)
-
-            Chart(trend.points) { point in
-                LineMark(
-                    x: .value("Date", point.date),
-                    y: .value("Weight", point.set.weightLbs)
-                )
-                .foregroundStyle(SYN.cyan)
-                .interpolationMethod(.monotone)
-                .lineStyle(StrokeStyle(lineWidth: 2))
-
-                if point.id == trend.latest.id {
-                    PointMark(
-                        x: .value("Date", point.date),
-                        y: .value("Weight", point.set.weightLbs)
-                    )
-                    .foregroundStyle(SYN.cyan)
-                    .symbolSize(30)
-                }
+            if showsSparkline {
+                Spacer(minLength: Spacing.s)
+                sparkline
             }
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            .chartYScale(domain: .automatic(includesZero: false))
-            .frame(width: 110, height: 44)
-            .accessibilityHidden(true)
         }
         .progressCard()
         .accessibilityElement(children: .combine)
+    }
+
+    private var sparkline: some View {
+        let lineColor = trend.isDowntrend ? SYN.amber : SYN.cyan
+        return Chart(trend.points) { point in
+            LineMark(
+                x: .value("Date", point.date),
+                y: .value("Weight", point.set.weightLbs)
+            )
+            .foregroundStyle(lineColor)
+            .interpolationMethod(.monotone)
+            .lineStyle(StrokeStyle(lineWidth: 2))
+
+            if point.id == trend.latest.id {
+                PointMark(
+                    x: .value("Date", point.date),
+                    y: .value("Weight", point.set.weightLbs)
+                )
+                .foregroundStyle(lineColor)
+                .symbolSize(30)
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartYScale(domain: trend.weightDomain)
+        .frame(width: 110, height: 44)
+        .accessibilityHidden(true)
     }
 }
 

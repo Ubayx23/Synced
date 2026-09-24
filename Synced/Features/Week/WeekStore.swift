@@ -35,6 +35,12 @@ struct Session: Identifiable, Equatable {
     var topGrade: Int? { grades.max() }
 }
 
+/// One past use of an exercise name and the muscle groups of its session.
+struct ExerciseUse {
+    let name: String
+    let muscles: Set<MuscleGroup>
+}
+
 /// What the Log session sheet saves. `id` is nil for a fresh log.
 struct SessionLog {
     var id: UUID?
@@ -201,6 +207,36 @@ final class WeekStore {
         case notDeleted
         var errorDescription: String? {
             "The session wasn't removed. Check your connection and try again."
+        }
+    }
+
+    /// Every exercise from the user's logged lifts, newest session first,
+    /// tagged with that session's muscle groups. Feeds the name suggestions
+    /// on the Log sheet; a failure just means no suggestions.
+    static func exerciseHistory() async -> [ExerciseUse] {
+        struct HistoryRow: Decodable {
+            let muscle_groups: [String]?
+            let lift_exercises: LiftExerciseList?
+        }
+        do {
+            let userID = try await supabase.auth.session.user.id
+            let rows: [HistoryRow] = try await supabase
+                .from("pre_lift_checkins")
+                .select("muscle_groups, lift_exercises")
+                .eq("user_id", value: userID.uuidString)
+                .eq("is_planned", value: false)
+                .eq("session_type", value: SessionType.lift.rawValue)
+                .order("scheduled_date", ascending: false)
+                .order("created_at", ascending: false)
+                .execute()
+                .value
+            return rows.flatMap { row in
+                let muscles = Set((row.muscle_groups ?? []).compactMap(MuscleGroup.init(rawValue:)))
+                return (row.lift_exercises?.items ?? []).map { ExerciseUse(name: $0.name, muscles: muscles) }
+            }
+        } catch {
+            log.error("Exercise history failed: \(String(describing: error), privacy: .public)")
+            return []
         }
     }
 

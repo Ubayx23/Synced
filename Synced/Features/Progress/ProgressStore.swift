@@ -144,10 +144,11 @@ enum ProgressWindow: CaseIterable, Identifiable {
     }
 }
 
-struct WeeklyGrade: Identifiable {
-    let weekStart: Date
+/// Top grade sent on one day.
+struct GradePoint: Identifiable {
+    let date: Date
     let grade: Int
-    var id: Date { weekStart }
+    var id: Date { date }
 }
 
 struct ExercisePoint: Identifiable {
@@ -163,6 +164,22 @@ struct ExerciseTrend: Identifiable {
     var id: String { name.lowercased() }
     var latest: ExercisePoint { points[points.count - 1] }
     var first: ExercisePoint { points[0] }
+    var previous: ExercisePoint? { points.count >= 2 ? points[points.count - 2] : nil }
+
+    /// Most recent top set is lighter than the one before it.
+    var isDowntrend: Bool {
+        guard let previous else { return false }
+        return latest.set.weightLbs < previous.set.weightLbs
+    }
+
+    /// Sparkline fits tightly around the data, never from zero.
+    var weightDomain: ClosedRange<Double> {
+        let weights = points.map(\.set.weightLbs)
+        let low = weights.min() ?? 0
+        let high = weights.max() ?? 0
+        let pad = max((high - low) * 0.15, 2.5)
+        return max(0, low - pad)...(high + pad)
+    }
 }
 
 /// Everything the Progress screen shows, derived from one fetch for a window.
@@ -173,8 +190,19 @@ struct ProgressSummary {
     let hasClimbs: Bool
     let topGrade: Int?
     let comparison: String?
-    let weeklyTop: [WeeklyGrade]
+    /// Oldest first, one point per day with climbing.
+    let gradePoints: [GradePoint]
+    /// Fewer than this many points shows a compact stat instead of a chart.
+    static let minChartPoints = 3
+    var showsGradeChart: Bool { gradePoints.count >= Self.minChartPoints }
+    /// From the first point (never before it) to today.
     let chartDomain: ClosedRange<Date>
+    /// One below the lowest top grade to two above the highest, within V0 to V17.
+    let gradeDomain: ClosedRange<Int>
+    /// Most recent point sits below an earlier peak.
+    let climbDowntrend: Bool
+    /// "First send at V3 on Sep 21" for the window's top grade.
+    let firstSendText: String?
     /// Grade and count, highest grade first.
     let sendCounts: [(grade: Int, count: Int)]
 
@@ -237,20 +265,32 @@ struct ProgressSummary {
             comparison = nil
         }
 
-        let byWeek = Dictionary(grouping: climbs, by: { weekStart($0.date) })
-        weeklyTop = byWeek
-            .compactMap { week, list in list.flatMap(\.grades).max().map { WeeklyGrade(weekStart: week, grade: $0) } }
-            .sorted { $0.weekStart < $1.weekStart }
+        let byDay = Dictionary(grouping: climbs, by: { cal.startOfDay(for: $0.date) })
+        gradePoints = byDay
+            .compactMap { day, list in list.flatMap(\.grades).max().map { GradePoint(date: day, grade: $0) } }
+            .sorted { $0.date < $1.date }
 
         let thisWeek = weekStart(today)
-        let domainStart: Date
-        switch window {
-        case .last30:
-            domainStart = cal.date(byAdding: .weekOfYear, value: -7, to: thisWeek) ?? thisWeek
-        case .allTime:
-            domainStart = weeklyTop.first?.weekStart ?? thisWeek
+        let firstDay = gradePoints.first?.date ?? today
+        chartDomain = min(firstDay, today)...today
+
+        let pointGrades = gradePoints.map(\.grade)
+        let low = pointGrades.min() ?? 0
+        let high = pointGrades.max() ?? 0
+        gradeDomain = max(0, low - 1)...min(17, high + 2)
+
+        if let last = gradePoints.last, gradePoints.count >= 2 {
+            let earlierPeak = gradePoints.dropLast().map(\.grade).max() ?? last.grade
+            climbDowntrend = last.grade < earlierPeak
+        } else {
+            climbDowntrend = false
         }
-        chartDomain = min(domainStart, thisWeek)...thisWeek
+
+        if let top, let day = climbs.filter({ $0.grades.contains(top) }).map(\.date).min() {
+            firstSendText = "First send at V\(top) on \(day.formatted(.dateTime.month(.abbreviated).day()))"
+        } else {
+            firstSendText = nil
+        }
 
         sendCounts = Dictionary(grouping: climbs.flatMap(\.grades), by: { $0 })
             .map { (grade: $0.key, count: $0.value.count) }

@@ -23,6 +23,12 @@ struct SetDraft: Identifiable, Equatable {
 
     init() {}
 
+    /// Starts from the previous set's values; most sets repeat or nudge them.
+    init(copying set: SetDraft?) {
+        weight = set?.weight ?? ""
+        reps = set?.reps ?? ""
+    }
+
     init(_ set: LiftSet) {
         weight = set.weightLbs.rounded() == set.weightLbs
             ? String(Int(set.weightLbs))
@@ -59,6 +65,10 @@ extension Array where Element == ExerciseDraft {
 /// weight and reps, add and remove controls. No validation UI.
 struct ExercisesEditor: View {
     @Binding var exercises: [ExerciseDraft]
+    /// Past exercise names for the selected muscle groups, newest first.
+    var suggestions: [String] = []
+
+    static let maxSuggestions = 6
 
     static let maxExercises = 8
     static let maxSets = 10
@@ -94,6 +104,16 @@ struct ExercisesEditor: View {
         let setCount = exercise.wrappedValue.sets.count
 
         return VStack(alignment: .leading, spacing: Spacing.m) {
+            // Offered while naming: when the name is empty or being edited.
+            let chips = suggestionChips(for: exercise.wrappedValue)
+            if !chips.isEmpty && (exercise.wrappedValue.name.isEmpty || focus == .name(id)) {
+                suggestionRow(chips) { name in
+                    exercise.wrappedValue.name = name
+                    if let first = exercise.wrappedValue.sets.first { focus = .weight(first.id) }
+                }
+                .transition(.opacity)
+            }
+
             HStack(spacing: Spacing.s) {
                 TextField(
                     "",
@@ -124,7 +144,7 @@ struct ExercisesEditor: View {
 
             HStack(spacing: Spacing.s) {
                 Button {
-                    let set = SetDraft()
+                    let set = SetDraft(copying: exercise.wrappedValue.sets.last)
                     exercise.wrappedValue.sets.append(set)
                     focus = .weight(set.id)
                 } label: {
@@ -153,6 +173,44 @@ struct ExercisesEditor: View {
             RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                 .stroke(SYN.border, lineWidth: 1)
         )
+    }
+
+    // MARK: - Suggestions
+
+    /// Drops names already used by another exercise in this session and the
+    /// name this exercise already has.
+    private func suggestionChips(for exercise: ExerciseDraft) -> [String] {
+        let taken = Set(
+            exercises
+                .filter { $0.id != exercise.id }
+                .map { $0.name.trimmingCharacters(in: .whitespaces).lowercased() }
+        )
+        let current = exercise.name.trimmingCharacters(in: .whitespaces).lowercased()
+        return suggestions
+            .filter { !taken.contains($0.lowercased()) && $0.lowercased() != current }
+            .prefix(Self.maxSuggestions)
+            .map { $0 }
+    }
+
+    private func suggestionRow(_ names: [String], onPick: @escaping (String) -> Void) -> some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: Spacing.s) {
+                ForEach(names, id: \.self) { name in
+                    Button { onPick(name) } label: {
+                        Text(name)
+                            .font(.synText(13, weight: .medium))
+                            .foregroundStyle(SYN.textDim)
+                            .padding(.horizontal, Spacing.m)
+                            .frame(height: 30)
+                            .background(Capsule().fill(SYN.surfaceHi))
+                            .overlay(Capsule().stroke(SYN.border, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Fills the exercise name")
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
     }
 
     // MARK: - Set row

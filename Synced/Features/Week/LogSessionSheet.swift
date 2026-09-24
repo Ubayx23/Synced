@@ -12,6 +12,8 @@ struct LogSessionSheet: View {
     @State private var grades: [Int]
     @State private var muscles: Set<MuscleGroup>
     @State private var exercises: [ExerciseDraft]
+    @State private var exerciseHistory: [ExerciseUse] = []
+    @State private var historyLoaded = false
     @State private var rating: Int?
     @State private var notes: String
     @State private var isSaving = false
@@ -37,6 +39,20 @@ struct LogSessionSheet: View {
         case .lift:  return !muscles.isEmpty
         case .rest:  return true
         case nil:    return false
+        }
+    }
+
+    /// Past exercises from sessions sharing any selected muscle group,
+    /// newest first, one entry per name ignoring case. Updates live as the
+    /// muscle selection changes.
+    private var exerciseSuggestions: [String] {
+        guard !muscles.isEmpty else { return [] }
+        var seen = Set<String>()
+        return exerciseHistory.compactMap { use in
+            guard !use.muscles.isDisjoint(with: muscles) else { return nil }
+            let name = use.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty, seen.insert(name.lowercased()).inserted else { return nil }
+            return name
         }
     }
 
@@ -80,7 +96,7 @@ struct LogSessionSheet: View {
                         section("Focus", trailing: "Pick one or more") { musclePicker }
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         section("Exercises", optional: true) {
-                            ExercisesEditor(exercises: $exercises)
+                            ExercisesEditor(exercises: $exercises, suggestions: exerciseSuggestions)
                         }
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
@@ -103,6 +119,12 @@ struct LogSessionSheet: View {
         .presentationBackground(SYN.bg)
         .presentationCornerRadius(Radius.card * 2)
         .interactiveDismissDisabled(isSaving || isDeleting)
+        // Fetch past exercises once, the first time the sheet shows a lift.
+        .task(id: type == .lift) {
+            guard type == .lift, !historyLoaded else { return }
+            historyLoaded = true
+            exerciseHistory = await WeekStore.exerciseHistory()
+        }
         .confirmationDialog("Delete this session?", isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { deleteSession() }
             Button("Cancel", role: .cancel) {}
