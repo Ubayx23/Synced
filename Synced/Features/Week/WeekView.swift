@@ -8,6 +8,8 @@ struct WeekView: View {
     @State private var planTarget: PlanTarget?
     @State private var logTarget: LogTarget?
     @State private var showingProfile = false
+    @State private var pendingDelete: Session?
+    @State private var deleteError: String?
 
     private let days = WeekStore.weekDays()
     private let rowGap = Spacing.s
@@ -37,7 +39,8 @@ struct WeekView: View {
                                     sessions: store.sessions(on: day),
                                     height: rowHeight(for: proxy.size.height),
                                     onPlan: { planTarget = PlanTarget(day: day) },
-                                    onOpen: { logTarget = LogTarget(session: $0) }
+                                    onOpen: { logTarget = LogTarget(session: $0) },
+                                    onDelete: { pendingDelete = $0 }
                                 )
                             }
                         }
@@ -59,6 +62,39 @@ struct WeekView: View {
         }
         .sheet(isPresented: $showingProfile) {
             ProfileSheet()
+        }
+        .confirmationDialog(
+            "Delete this session?",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingDelete
+        ) { session in
+            Button("Delete", role: .destructive) { delete(session) }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("This can't be undone.")
+        }
+        .alert(
+            "Couldn't delete. Try again.",
+            isPresented: Binding(
+                get: { deleteError != nil },
+                set: { if !$0 { deleteError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        }
+    }
+
+    private func delete(_ session: Session) {
+        Task {
+            do {
+                try await store.delete(session)
+            } catch {
+                deleteError = error.localizedDescription
+            }
         }
     }
 
@@ -196,6 +232,7 @@ private struct DayRow: View {
     let height: CGFloat
     let onPlan: () -> Void
     let onOpen: (Session) -> Void
+    let onDelete: (Session) -> Void
 
     private var cal: Calendar { WeekStore.calendar }
     private var isToday: Bool { cal.isDateInToday(day) }
@@ -230,6 +267,19 @@ private struct DayRow: View {
                     SessionChip(session: session, showsLabel: sessions.count <= 2) {
                         onOpen(session)
                     }
+                    .contextMenu {
+                        Button {
+                            onOpen(session)
+                        } label: {
+                            Label(session.isPlanned ? "Log session" : "Edit session", systemImage: "square.and.pencil")
+                        }
+                        Button(role: .destructive) {
+                            onDelete(session)
+                        } label: {
+                            Label("Delete session", systemImage: "trash")
+                        }
+                    }
+                    .accessibilityAction(named: "Delete session") { onDelete(session) }
                 }
             }
 

@@ -14,6 +14,8 @@ struct LogSessionSheet: View {
     @State private var rating: Int?
     @State private var notes: String
     @State private var isSaving = false
+    @State private var isDeleting = false
+    @State private var confirmingDelete = false
     @State private var errorMessage: String?
     @FocusState private var notesFocused: Bool
 
@@ -94,7 +96,13 @@ struct LogSessionSheet: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(SYN.bg)
         .presentationCornerRadius(Radius.card * 2)
-        .interactiveDismissDisabled(isSaving)
+        .interactiveDismissDisabled(isSaving || isDeleting)
+        .confirmationDialog("Delete this session?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { deleteSession() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This can't be undone.")
+        }
     }
 
     // MARK: - Top bar
@@ -338,14 +346,53 @@ struct LogSessionSheet: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
             }
-            PrimaryButton(title: isSaving ? "Saving" : "Save session", disabled: !canSave || isSaving) {
+            PrimaryButton(title: isSaving ? "Saving" : "Save session", disabled: !canSave || isSaving || isDeleting) {
                 save()
+            }
+
+            // Only existing sessions (planned or logged) can be deleted; a
+            // fresh log has no row yet. Extra space keeps it away from Save.
+            if session != nil {
+                Button {
+                    confirmingDelete = true
+                } label: {
+                    HStack(spacing: Spacing.s) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(isDeleting ? "Deleting" : "Delete session")
+                            .font(.synText(15, weight: .medium))
+                    }
+                    .foregroundStyle(SYN.red)
+                    .padding(.horizontal, Spacing.lg)
+                    .frame(height: 44)
+                    .background(Capsule().fill(SYN.red.opacity(0.06)))
+                    .overlay(Capsule().stroke(SYN.red.opacity(0.45), lineWidth: 1))
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(isSaving || isDeleting)
+                .padding(.top, Spacing.lg)
+            }
+        }
+    }
+
+    private func deleteSession() {
+        guard let session, !isDeleting else { return }
+        isDeleting = true
+        errorMessage = nil
+        Task {
+            do {
+                try await store.delete(session)
+                dismiss()
+            } catch {
+                isDeleting = false
+                errorMessage = "Couldn't delete. Try again."
             }
         }
     }
 
     private func save() {
-        guard let type, canSave, !isSaving else { return }
+        guard let type, canSave, !isSaving, !isDeleting else { return }
         isSaving = true
         errorMessage = nil
         let log = SessionLog(

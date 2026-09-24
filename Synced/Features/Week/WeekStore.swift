@@ -174,6 +174,33 @@ final class WeekStore {
         }
     }
 
+    /// Hard deletes the session's row and drops it locally. RLS already
+    /// scopes deletes to the owner; the user_id filter is a second check.
+    /// Supabase returns no error when RLS filters a delete out, so an empty
+    /// result is treated as a failure rather than a silent success.
+    @MainActor
+    func delete(_ session: Session) async throws {
+        struct DeletedRow: Decodable { let id: UUID }
+        let userID = try await supabase.auth.session.user.id
+        let deleted: [DeletedRow] = try await supabase
+            .from("pre_lift_checkins")
+            .delete()
+            .eq("id", value: session.id.uuidString)
+            .eq("user_id", value: userID.uuidString)
+            .select("id")
+            .execute()
+            .value
+        guard !deleted.isEmpty else { throw DeleteError.notDeleted }
+        sessions.removeAll { $0.id == session.id }
+    }
+
+    enum DeleteError: LocalizedError {
+        case notDeleted
+        var errorDescription: String? {
+            "The session wasn't removed. Check your connection and try again."
+        }
+    }
+
     private static func session(from row: SessionRow) -> Session? {
         guard
             let raw = row.session_type,
