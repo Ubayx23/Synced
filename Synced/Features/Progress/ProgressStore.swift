@@ -13,6 +13,15 @@ struct LoggedSession: Identifiable, Equatable {
     let exercises: [LiftExercise]
 }
 
+extension String {
+    /// Canonical key for matching exercise names: trimmed and lowercased, so
+    /// "Curls", "CURLS", and "curls " are one exercise. Stored names are
+    /// never rewritten; this only affects grouping, matching, and suggestions.
+    var exerciseKey: String {
+        trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
 /// An exercise on a lift session, stored in sessions.lift_exercises
 /// as `[{"name": "Bench press", "muscle_group": "chest",
 /// "sets": [{"weight_lbs": 185, "reps": 5}]}]`. muscle_group is optional;
@@ -87,6 +96,7 @@ final class ProgressStore {
                 .eq("user_id", value: userID.uuidString)
                 .eq("is_planned", value: false)
                 .order("scheduled_date", ascending: false)
+                .order("created_at", ascending: false)
                 .execute()
                 .value
             sessions = rows.compactMap(\.session)
@@ -194,7 +204,7 @@ struct ExerciseTrend: Identifiable {
     let name: String
     /// Oldest first.
     let points: [ExercisePoint]
-    var id: String { name.lowercased() }
+    var id: String { name.exerciseKey }
     var latest: ExercisePoint { points[points.count - 1] }
     var first: ExercisePoint { points[0] }
     var previous: ExercisePoint? { points.count >= 2 ? points[points.count - 2] : nil }
@@ -327,14 +337,22 @@ struct ProgressSummary {
         let lifts = inWindow.filter { $0.type == .lift }
         hasLifts = !lifts.isEmpty
 
+        // Display casing is the first time the name was ever logged, across
+        // all time, not just this window. Sessions arrive newest first (by
+        // scheduled_date, then created_at), so walk them in reverse.
+        var displayName: [String: String] = [:]
+        for session in sessions.reversed() where session.type == .lift {
+            for exercise in session.exercises where displayName[exercise.name.exerciseKey] == nil {
+                displayName[exercise.name.exerciseKey] = exercise.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
         var grouped: [String: (name: String, points: [ExercisePoint])] = [:]
-        // Sessions arrive newest first, so the first name seen per key is the
-        // most recent spelling.
-        for session in lifts.sorted(by: { $0.date > $1.date }) {
+        for session in lifts {
             for exercise in session.exercises {
-                let key = exercise.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let key = exercise.name.exerciseKey
                 guard !key.isEmpty, let set = exercise.topSet, let last = exercise.sets.last else { continue }
-                var entry = grouped[key] ?? (name: exercise.name.trimmingCharacters(in: .whitespacesAndNewlines), points: [])
+                var entry = grouped[key] ?? (name: displayName[key] ?? exercise.name, points: [])
                 let point = ExercisePoint(date: session.date, set: set, lastSet: last)
                 // One point per day: keep the session with the heavier top set.
                 if let i = entry.points.firstIndex(where: { cal.isDate($0.date, inSameDayAs: session.date) }) {

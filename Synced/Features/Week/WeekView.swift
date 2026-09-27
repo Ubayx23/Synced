@@ -13,9 +13,13 @@ struct WeekView: View {
     @State private var deleteError: String?
     /// 0 is the current week; -1 last week, 1 next week.
     @State private var weekOffset = 0
+    /// Refreshed whenever the app becomes active, so an app left open
+    /// overnight shows the new day without a relaunch.
+    @State private var today = Date()
+    @Environment(\.scenePhase) private var scenePhase
 
     private var days: [Date] {
-        let anchor = WeekStore.calendar.date(byAdding: .weekOfYear, value: weekOffset, to: Date()) ?? Date()
+        let anchor = WeekStore.calendar.date(byAdding: .weekOfYear, value: weekOffset, to: today) ?? today
         return WeekStore.weekDays(containing: anchor)
     }
     private let rowGap = Spacing.s
@@ -42,6 +46,7 @@ struct WeekView: View {
                             ForEach(days, id: \.self) { day in
                                 DayRow(
                                     day: day,
+                                    today: today,
                                     sessions: store.sessions(on: day),
                                     height: rowHeight(for: proxy.size.height),
                                     onPlan: { planTarget = PlanTarget(day: day) },
@@ -60,7 +65,12 @@ struct WeekView: View {
             .padding(.horizontal, Spacing.pageH)
         }
         // Reloads on every week change; a newer change cancels the older fetch.
-        .task(id: weekOffset) { await store.load(week: days) }
+        // Reloads when the visible week changes, from the chevrons or from
+        // the calendar rolling into a new week while the app was away.
+        .task(id: days.first) { await store.load(week: days) }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { today = Date() }
+        }
         .sheet(item: $planTarget) { target in
             PlanSessionSheet(day: target.day, store: store)
         }
@@ -288,6 +298,9 @@ private struct LogTarget: Identifiable {
 
 private struct DayRow: View {
     let day: Date
+    /// Passed in rather than read from the clock, so the row redraws when
+    /// the day changes.
+    let today: Date
     let sessions: [Session]
     let height: CGFloat
     let onPlan: () -> Void
@@ -295,8 +308,8 @@ private struct DayRow: View {
     let onDelete: (Session) -> Void
 
     private var cal: Calendar { WeekStore.calendar }
-    private var isToday: Bool { cal.isDateInToday(day) }
-    private var isPast: Bool { day < cal.startOfDay(for: Date()) }
+    private var isToday: Bool { cal.isDate(day, inSameDayAs: today) }
+    private var isPast: Bool { day < cal.startOfDay(for: today) }
 
     private var dateColor: Color {
         if isToday { return SYN.cyan }

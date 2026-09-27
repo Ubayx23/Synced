@@ -43,23 +43,33 @@ struct LogSessionSheet: View {
         }
     }
 
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
     private var selectedMuscles: [MuscleGroup] {
         MuscleGroup.allCases.filter(muscles.contains)
     }
 
     /// Past exercises whose muscle group is currently selected, newest first,
-    /// one per name ignoring case, minus chips the user removed. Each carries
-    /// the sets from its most recent log. Updates live with the selection.
+    /// one per name ignoring case and surrounding spaces, minus chips the user
+    /// removed. Each shows the casing from the first time it was ever logged,
+    /// so a tapped chip matches the history, and carries the sets from its
+    /// most recent log. Updates live with the selection.
     private var exerciseSuggestions: [ExerciseSuggestion] {
         guard !muscles.isEmpty else { return [] }
+        // History is newest first, so the earliest spelling is the last one seen.
+        var firstSpelling: [String: String] = [:]
+        for use in exerciseHistory.reversed() where firstSpelling[use.name.exerciseKey] == nil {
+            firstSpelling[use.name.exerciseKey] = use.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         var seen = Set<String>()
         return exerciseHistory.compactMap { use in
             let matched = MuscleGroup.allCases.filter { muscles.contains($0) && use.muscles.contains($0) }
             guard let muscle = matched.first else { return nil }
-            let name = use.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            let key = name.lowercased()
-            guard !name.isEmpty, !hiddenSuggestions.contains(key), seen.insert(key).inserted else { return nil }
-            return ExerciseSuggestion(name: name, muscle: muscle, sets: use.sets)
+            let key = use.name.exerciseKey
+            guard !key.isEmpty, !hiddenSuggestions.contains(key), seen.insert(key).inserted else { return nil }
+            return ExerciseSuggestion(name: firstSpelling[key] ?? use.name, muscle: muscle, sets: use.sets)
         }
     }
 
@@ -125,9 +135,26 @@ struct LogSessionSheet: View {
                 .padding(.top, Spacing.s)
                 .padding(.bottom, Spacing.lg)
                 .animation(.easeOut(duration: 0.22), value: type)
+                // Tapping empty space between sections dismisses the keyboard.
+                // It sits behind the content, so fields, buttons, and scrolling
+                // keep their own touches.
+                .background(
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture(perform: dismissKeyboard)
+                )
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
+            // Number pads have no Return key; Done covers every field here.
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done", action: dismissKeyboard)
+                        .font(.synText(16, weight: .semibold))
+                        .foregroundStyle(SYN.cyan)
+                }
+            }
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)

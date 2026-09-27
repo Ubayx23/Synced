@@ -108,7 +108,12 @@ struct ExercisesEditor: View {
     private enum Field: Hashable {
         case name(UUID)
         case weight(UUID)
+        case reps(UUID)
     }
+
+    /// Structural changes only. Animating on every keystroke re-lays out the
+    /// text fields mid-edit and throws the cursor to the end.
+    private let structural = Animation.easeOut(duration: 0.2)
 
     @FocusState private var focus: Field?
 
@@ -133,8 +138,12 @@ struct ExercisesEditor: View {
 
             addExerciseButton
         }
-        .animation(.easeOut(duration: 0.2), value: exercises)
-        .animation(.easeOut(duration: 0.2), value: suggestions)
+        .animation(structural, value: suggestions)
+        .animation(structural, value: exercises.map(\.id))
+        // Clean up whatever was typed once a number field loses focus.
+        .onChange(of: focus) { old, _ in
+            if let old { sanitize(old) }
+        }
     }
 
     // MARK: - Exercise card
@@ -159,7 +168,7 @@ struct ExercisesEditor: View {
                 }
 
                 removeButton(label: "Remove exercise") {
-                    exercises.removeAll { $0.id == id }
+                    withAnimation(structural) { exercises.removeAll { $0.id == id } }
                 }
             }
 
@@ -171,7 +180,9 @@ struct ExercisesEditor: View {
             VStack(spacing: Spacing.s) {
                 ForEach(Array(exercise.wrappedValue.sets.enumerated()), id: \.element.id) { index, set in
                     setRow(number: index + 1, set: binding(for: set.id, in: exercise)) {
-                        exercise.wrappedValue.sets.removeAll { $0.id == set.id }
+                        withAnimation(structural) {
+                            exercise.wrappedValue.sets.removeAll { $0.id == set.id }
+                        }
                     }
                 }
             }
@@ -179,7 +190,7 @@ struct ExercisesEditor: View {
             HStack(spacing: Spacing.s) {
                 Button {
                     let set = SetDraft(copying: exercise.wrappedValue.sets.last)
-                    exercise.wrappedValue.sets.append(set)
+                    withAnimation(structural) { exercise.wrappedValue.sets.append(set) }
                     focus = .weight(set.id)
                 } label: {
                     Label("Add set", systemImage: "plus")
@@ -240,9 +251,9 @@ struct ExercisesEditor: View {
     /// Past exercises for the selected muscle groups, minus names already in
     /// this session. Hidden when there is no room to add another exercise.
     private var availableSuggestions: [ExerciseSuggestion] {
-        let hasEmptyCard = exercises.contains { $0.name.trimmingCharacters(in: .whitespaces).isEmpty }
+        let hasEmptyCard = exercises.contains { $0.name.exerciseKey.isEmpty }
         guard hasEmptyCard || exercises.count < Self.maxExercises else { return [] }
-        let taken = Set(exercises.map { $0.name.trimmingCharacters(in: .whitespaces).lowercased() })
+        let taken = Set(exercises.map(\.name.exerciseKey))
         return suggestions
             .filter { !taken.contains($0.id) }
             .prefix(Self.maxSuggestions)
@@ -253,13 +264,13 @@ struct ExercisesEditor: View {
     /// exercise. Sets come from the last time it was logged unless the card
     /// already has numbers in it.
     private func addSuggested(_ suggestion: ExerciseSuggestion) {
-        if let i = exercises.lastIndex(where: { $0.name.trimmingCharacters(in: .whitespaces).isEmpty }) {
+        if let i = exercises.lastIndex(where: { $0.name.exerciseKey.isEmpty }) {
             let filled = ExerciseDraft(suggestion)
             exercises[i].name = filled.name
             exercises[i].muscle = filled.muscle
             if exercises[i].hasNoSetValues { exercises[i].sets = filled.sets }
         } else if exercises.count < Self.maxExercises {
-            exercises.append(ExerciseDraft(suggestion))
+            withAnimation(structural) { exercises.append(ExerciseDraft(suggestion)) }
         }
         focus = nil
     }
@@ -297,6 +308,42 @@ struct ExercisesEditor: View {
             }
         }
         .scrollIndicators(.hidden)
+    }
+
+    // MARK: - Number cleanup
+
+    /// Silently drops anything that is not a digit: weight keeps one decimal
+    /// point (a comma counts as one), reps keep digits only. Runs when a
+    /// field loses focus, never mid-typing, so the cursor is left alone.
+    private func sanitize(_ field: Field) {
+        let setID: UUID
+        let isWeight: Bool
+        switch field {
+        case .weight(let id): setID = id; isWeight = true
+        case .reps(let id):   setID = id; isWeight = false
+        case .name:           return
+        }
+        guard
+            let e = exercises.firstIndex(where: { $0.sets.contains { $0.id == setID } }),
+            let s = exercises[e].sets.firstIndex(where: { $0.id == setID })
+        else { return }
+
+        let raw = isWeight ? exercises[e].sets[s].weight : exercises[e].sets[s].reps
+        var seenPoint = false
+        let cleaned = String(raw.compactMap { char -> Character? in
+            if char.isASCII && char.isNumber { return char }
+            if isWeight && (char == "." || char == ","), !seenPoint {
+                seenPoint = true
+                return "."
+            }
+            return nil
+        })
+        guard cleaned != raw else { return }
+        if isWeight {
+            exercises[e].sets[s].weight = cleaned
+        } else {
+            exercises[e].sets[s].reps = cleaned
+        }
     }
 
     // MARK: - Bindings
@@ -343,7 +390,9 @@ struct ExercisesEditor: View {
                 .font(.synText(13))
                 .foregroundStyle(SYN.textFaint)
 
+            // Reps are whole numbers, so no decimal key.
             numberField(text: set.reps, placeholder: "0", unit: "reps", keyboard: .numberPad)
+                .focused($focus, equals: .reps(set.wrappedValue.id))
 
             removeButton(label: "Remove set \(number)", action: onRemove)
         }
@@ -398,7 +447,7 @@ struct ExercisesEditor: View {
             Button {
                 // Starts with one empty set so the numbers have somewhere to go.
                 let draft = ExerciseDraft(muscle: selectedMuscles.first)
-                exercises.append(draft)
+                withAnimation(structural) { exercises.append(draft) }
                 focus = .name(draft.id)
             } label: {
                 Label("Add exercise", systemImage: "plus")

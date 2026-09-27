@@ -7,6 +7,7 @@ struct ProgressScreen: View {
     @State private var store = ProgressStore()
     @State private var window: ProgressWindow = .last30
     @State private var showingProfile = false
+    @Environment(\.scenePhase) private var scenePhase
 
     private var summary: ProgressSummary {
         ProgressSummary(sessions: store.sessions, window: window)
@@ -48,6 +49,11 @@ struct ProgressScreen: View {
         }
         // Refetch every time the tab appears so sessions logged on Week show up.
         .onAppear { Task { await store.load() } }
+        // Back from the background: refetch so windows and "this week"
+        // counts use the current date.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await store.load() } }
+        }
         .sheet(isPresented: $showingProfile) {
             ProfileSheet()
         }

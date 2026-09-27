@@ -52,7 +52,7 @@ struct ExerciseSuggestion: Identifiable, Equatable {
     let muscle: MuscleGroup?
     /// Sets from the most recent time it was logged, used to pre-fill.
     let sets: [LiftSet]
-    var id: String { name.lowercased() }
+    var id: String { name.exerciseKey }
 }
 
 /// Suggestion chips the user removed. Stored on this device per account;
@@ -70,14 +70,14 @@ enum HiddenExerciseSuggestions {
     static func hide(_ name: String) {
         guard let key else { return }
         var names = load()
-        names.insert(name.lowercased())
+        names.insert(name.exerciseKey)
         UserDefaults.standard.set(Array(names), forKey: key)
     }
 
     static func unhide(_ names: [String]) {
         guard let key, !names.isEmpty else { return }
         let current = load()
-        let remaining = current.subtracting(names.map { $0.lowercased() })
+        let remaining = current.subtracting(names.map(\.exerciseKey))
         if remaining != current {
             UserDefaults.standard.set(Array(remaining), forKey: key)
         }
