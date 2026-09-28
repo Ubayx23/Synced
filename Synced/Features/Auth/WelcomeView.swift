@@ -9,7 +9,7 @@ struct WelcomeView: View {
     @State private var phase = 0
 
     var body: some View {
-        ScreenShell(progress: nil, onBack: nil, ambient: true) {
+        ScreenShell(progress: nil, onBack: nil, ambient: true, glow: .hero) {
             VStack(spacing: 0) {
                 VStack(spacing: Spacing.m) {
                     SyncedWordmark(size: 56)

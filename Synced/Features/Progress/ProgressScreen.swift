@@ -15,7 +15,14 @@ struct ProgressScreen: View {
 
     var body: some View {
         ZStack {
+            // Hero glow behind the header and headline only; it fades out
+            // before the cards below. An overlay, so its oversized frame
+            // never affects the screen's layout.
             ScreenBackground()
+                .overlay(alignment: .top) {
+                    HeroGlow(height: 620)
+                        .offset(y: -40)
+                }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.xl) {

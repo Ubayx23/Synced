@@ -236,6 +236,12 @@ struct RecoveryView: View {
                     scheduleResolve()
                 }
         )
+        // Warm pool behind the body so ready muscles read as glowing
+        // outward from it. Centered on the anatomy, starting just above it.
+        .background(alignment: .top) {
+            HeroGlow()
+                .offset(y: -80)
+        }
         .animation(.easeOut(duration: 0.3), value: store.daysSince)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)

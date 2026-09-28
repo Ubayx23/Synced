@@ -15,12 +15,13 @@ struct ScreenShell<Content: View, CTAContent: View>: View {
     var progress: Double?           // nil → no header
     var onBack: (() -> Void)?
     var ambient: Bool = true
+    var glow: GlowIntensity = .subtle
     @ViewBuilder var content: Content
     @ViewBuilder var cta: CTAContent
 
     var body: some View {
         ZStack {
-            if ambient { AmbientGlow().ignoresSafeArea() }
+            if ambient { AmbientGlow(intensity: glow).ignoresSafeArea() }
 
             VStack(spacing: 0) {
                 if let progress, let onBack {
