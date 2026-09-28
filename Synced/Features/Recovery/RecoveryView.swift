@@ -10,6 +10,17 @@ struct RecoveryView: View {
     /// Chosen at sign up; picks the male or female body model.
     @AppStorage(BodyModel.storageKey) private var bodyModel = BodyModel.male.rawValue
 
+    // Tap-to-label. MuscleMap reports which muscle was tapped but not where;
+    // a separate tap gesture records where. Both fire on the same tap and are
+    // paired right after it.
+    @State private var label: MuscleLabel?
+    @State private var labelSize: CGSize = .zero
+    @State private var pendingPoint: CGPoint?
+    @State private var pendingMuscle: Muscle?
+    @State private var resolveScheduled = false
+    private static let screenSpace = "recoveryScreen"
+    private static let labelHold: Duration = .seconds(2.5)
+
     private var gender: BodyGender {
         BodyGender(rawValue: bodyModel) ?? .male
     }
@@ -59,7 +70,16 @@ struct RecoveryView: View {
                     .padding(.bottom, Spacing.md)
             }
             .padding(.horizontal, Spacing.pageH)
+            // Taps anywhere off the anatomy close the label.
+            .background(
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { dismissLabel() }
+            )
+
+            labelOverlay
         }
+        .coordinateSpace(name: Self.screenSpace)
         .onAppear { Task { await store.load() } }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await store.load() } }
@@ -106,7 +126,7 @@ struct RecoveryView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
                     .contentTransition(.numericText())
-                EyebrowText(text: "Days since your last workout")
+                EyebrowText(text: "Last workout")
                     .foregroundStyle(SYN.textDim)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -117,9 +137,8 @@ struct RecoveryView: View {
                     .font(.synMono(48, weight: .bold))
                     .foregroundStyle(SYN.text)
                     .contentTransition(.numericText())
-                EyebrowText(text: "Fresh muscle groups")
+                EyebrowText(text: "Ready to train")
                     .foregroundStyle(SYN.textDim)
-                    .multilineTextAlignment(.trailing)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .accessibilityElement(children: .combine)
@@ -148,9 +167,21 @@ struct RecoveryView: View {
             // once; drawing them on both layers doubles the opacity and undoes
             // the softened ready tone.
             highlighted(BodyView(gender: gender, side: .front, style: baseStyle)) { $0 != .ready }
+                .onMuscleSelected { muscle, _ in
+                    pendingMuscle = muscle
+                    scheduleResolve()
+                }
             highlighted(BodyView(gender: gender, side: .front, style: glowStyle)) { $0 == .ready }
                 .allowsHitTesting(false)
         }
+        // Records where the tap landed; runs alongside MuscleMap's own tap.
+        .simultaneousGesture(
+            SpatialTapGesture(coordinateSpace: .named(Self.screenSpace))
+                .onEnded { value in
+                    pendingPoint = value.location
+                    scheduleResolve()
+                }
+        )
         .animation(.easeOut(duration: 0.3), value: store.daysSince)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)
@@ -200,6 +231,109 @@ struct RecoveryView: View {
         return parts.joined(separator: ". ")
     }
 
+    // MARK: - Tap label
+
+    /// App group for a tapped MuscleMap muscle. Always-visible sub-groups
+    /// report their parent (adductors come back as hamstring), so match on
+    /// a mapped muscle's parent too. Head, hands, knees, and feet have none.
+    private static func group(for tapped: Muscle) -> MuscleGroup? {
+        MuscleGroup.allCases.first { group in
+            (muscles[group] ?? []).contains { $0 == tapped || $0.parentGroup == tapped }
+        }
+    }
+
+    /// Pairs the two halves of one tap on the next run loop turn: a muscle
+    /// hit shows its label at the tap point, and a tap with no muscle (empty
+    /// space, head, hands, feet) closes the label.
+    private func scheduleResolve() {
+        guard !resolveScheduled else { return }
+        resolveScheduled = true
+        DispatchQueue.main.async {
+            resolveScheduled = false
+            let muscle = pendingMuscle
+            let point = pendingPoint
+            pendingMuscle = nil
+            pendingPoint = nil
+            guard let muscle, let group = Self.group(for: muscle), let point else {
+                dismissLabel()
+                return
+            }
+            showLabel(for: group, at: point)
+        }
+    }
+
+    /// Replaces any current label; tapping the same group again restarts the
+    /// hold timer.
+    private func showLabel(for group: MuscleGroup, at point: CGPoint) {
+        let next = MuscleLabel(group: group, point: point)
+        withAnimation(.easeOut(duration: 0.15)) { label = next }
+        Task {
+            try? await Task.sleep(for: Self.labelHold)
+            if label?.id == next.id { dismissLabel() }
+        }
+    }
+
+    private func dismissLabel() {
+        guard label != nil else { return }
+        withAnimation(.easeOut(duration: 0.15)) { label = nil }
+    }
+
+    /// "Trained today", "Trained yesterday", "Trained 3 days ago", or
+    /// "Not logged in 14 days".
+    private func contextLine(for group: MuscleGroup) -> String {
+        switch store.daysSince[group] {
+        case nil:    return "Not logged in \(RecoveryStore.windowDays) days"
+        case 0:      return "Trained today"
+        case 1:      return "Trained yesterday"
+        case let n?: return "Trained \(n) days ago"
+        }
+    }
+
+    /// Bottom center sits 20pt above the tap, kept inside the page margins,
+    /// and flips below the tap when it would run off the top.
+    private var labelOverlay: some View {
+        GeometryReader { proxy in
+            if let label {
+                let gap: CGFloat = 20
+                let halfW = labelSize.width / 2
+                let halfH = labelSize.height / 2
+                let minX = Spacing.pageH + halfW
+                let maxX = proxy.size.width - Spacing.pageH - halfW
+                let x = min(max(label.point.x, minX), max(minX, maxX))
+                let above = label.point.y - gap - halfH
+                let y = above - halfH < 0 ? label.point.y + gap + halfH : above
+
+                VStack(spacing: 2) {
+                    Text(label.group.title)
+                        .font(.synText(15, weight: .semibold))
+                        .foregroundStyle(SYN.text)
+                    Text(contextLine(for: label.group))
+                        .font(.synText(12))
+                        .foregroundStyle(SYN.textDim)
+                }
+                .padding(.horizontal, Spacing.md)
+                .padding(.vertical, Spacing.s)
+                .background(
+                    RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                        .fill(SYN.surface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                        .stroke(SYN.border, lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.4), radius: 8, y: 2)
+                .fixedSize()
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { labelSize = $0 }
+                .position(x: x, y: y)
+                // Taps on the label itself do not dismiss it.
+                .onTapGesture {}
+                .id(label.id)
+                .transition(.opacity.combined(with: .offset(y: 4)))
+                .accessibilityElement(children: .combine)
+            }
+        }
+    }
+
     // MARK: - Legend
 
     private var legend: some View {
@@ -221,4 +355,11 @@ struct RecoveryView: View {
                 .foregroundStyle(SYN.textFaint)
         }
     }
+}
+
+/// One visible tap label; a new id replaces the old one rather than stacking.
+private struct MuscleLabel: Equatable {
+    let id = UUID()
+    let group: MuscleGroup
+    let point: CGPoint
 }
