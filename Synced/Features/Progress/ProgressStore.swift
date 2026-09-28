@@ -84,6 +84,25 @@ final class ProgressStore {
     private(set) var sessions: [LoggedSession] = []
     private(set) var loadState: LoadState = .loading
 
+    /// The last `limit` sessions that logged this exercise with at least one
+    /// valid set, oldest to newest, each with its heaviest set. Matches names
+    /// the same way the trend grouping does. Reads the already-fetched
+    /// sessions only; no network call.
+    func recentTopSets(for exerciseName: String, limit: Int = 7) -> [SessionTopSet] {
+        let key = exerciseName.exerciseKey
+        var recent: [SessionTopSet] = []
+        // Newest first by date, not by fetch order.
+        for session in sessions.sorted(by: { $0.date > $1.date }) where session.type == .lift {
+            let tops = session.exercises
+                .filter { $0.name.exerciseKey == key }
+                .compactMap { $0.topSet?.weightLbs }
+            guard let top = tops.max() else { continue }
+            recent.append(SessionTopSet(id: session.id, date: session.date, topWeightLbs: top))
+            if recent.count == limit { break }
+        }
+        return recent.reversed()
+    }
+
     private static let log = Logger(subsystem: "page.synced.app", category: "ProgressStore")
 
     @MainActor
@@ -166,7 +185,7 @@ struct GradePoint: Identifiable {
 
 struct ExercisePoint: Identifiable {
     let date: Date
-    /// Heaviest set that session; drives the sparkline and headline set.
+    /// Heaviest set that session; drives the headline set.
     let set: LiftSet
     /// Final set that session; drives the session-over-session comparison.
     let lastSet: LiftSet
@@ -221,15 +240,14 @@ struct ExerciseTrend: Identifiable {
     /// Latest session came in lighter or for fewer reps, with nothing better.
     var isDowntrend: Bool { sessionDelta?.tone == .down }
     var isUptrend: Bool { sessionDelta?.tone == .up }
+}
 
-    /// Sparkline fits tightly around the data, never from zero.
-    var weightDomain: ClosedRange<Double> {
-        let weights = points.map(\.set.weightLbs)
-        let low = weights.min() ?? 0
-        let high = weights.max() ?? 0
-        let pad = max((high - low) * 0.15, 2.5)
-        return max(0, low - pad)...(high + pad)
-    }
+/// One session's heaviest set for an exercise, for the mini bar chart.
+struct SessionTopSet: Identifiable {
+    /// Session id.
+    let id: UUID
+    let date: Date
+    let topWeightLbs: Double
 }
 
 /// Everything the Progress screen shows, derived from one fetch for a window.
@@ -244,7 +262,8 @@ struct ProgressSummary {
     let comparison: String?
     /// Oldest first, one point per day with climbing. Feeds the headline.
     let gradePoints: [GradePoint]
-    /// Lift cards need this many sessions before drawing a sparkline.
+    /// Lift cards show the latest top set, rather than a before and after
+    /// line, from this many sessions on.
     static let minChartPoints = 3
     /// Most recent point sits below an earlier peak.
     let climbDowntrend: Bool

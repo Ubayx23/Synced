@@ -1,4 +1,3 @@
-import Charts
 import SwiftUI
 
 /// Progress tab: climb grade trend, lift exercise trends, and a small
@@ -231,7 +230,10 @@ struct ProgressScreen: View {
             } else {
                 VStack(alignment: .leading, spacing: Spacing.m) {
                     ForEach(s.trends.prefix(5)) { trend in
-                        ExerciseTrendCard(trend: trend)
+                        ExerciseTrendCard(
+                            trend: trend,
+                            recentTops: store.recentTopSets(for: trend.name).map(\.topWeightLbs)
+                        )
                     }
 
                     if s.trends.count > 5 {
@@ -309,8 +311,10 @@ struct ProgressScreen: View {
 
 private struct ExerciseTrendCard: View {
     let trend: ExerciseTrend
+    /// Top-set weights from the exercise's recent sessions, oldest first.
+    let recentTops: [Double]
 
-    private var showsSparkline: Bool { trend.points.count >= ProgressSummary.minChartPoints }
+    private var showsLatestSet: Bool { trend.points.count >= ProgressSummary.minChartPoints }
 
     /// Up is green, down is amber, a trade-off (one up, one down) is neutral.
     private func color(for delta: SessionDelta) -> Color {
@@ -323,74 +327,51 @@ private struct ExerciseTrendCard: View {
     }
 
     var body: some View {
-        HStack(spacing: Spacing.md) {
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(trend.name)
-                    .font(.synText(15, weight: .semibold))
-                    .foregroundStyle(SYN.text)
-                    .lineLimit(1)
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            Text(trend.name)
+                .font(.synText(15, weight: .semibold))
+                .foregroundStyle(SYN.text)
+                .lineLimit(1)
 
-                if showsSparkline {
-                    Text(trend.latest.set.formatted)
-                        .font(.synMono(17, weight: .semibold))
-                        .foregroundStyle(SYN.cyan)
-                } else {
-                    // Two sessions: show the last set of each instead of a line.
-                    HStack(spacing: Spacing.xs) {
-                        Text(trend.first.lastSet.formatted)
-                            .foregroundStyle(SYN.textDim)
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(SYN.textFaint)
-                        Text(trend.latest.lastSet.formatted)
-                            .foregroundStyle(trend.isDowntrend ? SYN.amber : SYN.cyan)
-                    }
-                    .font(.synMono(15, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+            if showsLatestSet {
+                Text(trend.latest.set.formatted)
+                    .font(.synMono(17, weight: .semibold))
+                    .foregroundStyle(SYN.cyan)
+            } else {
+                // Two sessions: show the last set of each.
+                HStack(spacing: Spacing.xs) {
+                    Text(trend.first.lastSet.formatted)
+                        .foregroundStyle(SYN.textDim)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(SYN.textFaint)
+                    Text(trend.latest.lastSet.formatted)
+                        .foregroundStyle(trend.isDowntrend ? SYN.amber : SYN.cyan)
                 }
-
-                if let delta = trend.sessionDelta {
-                    Text(delta.text)
-                        .font(.synText(12, weight: .medium))
-                        .foregroundStyle(color(for: delta))
-                }
+                .font(.synMono(15, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             }
 
-            if showsSparkline {
-                Spacer(minLength: Spacing.s)
-                sparkline
+            if let delta = trend.sessionDelta {
+                Text(delta.text)
+                    .font(.synText(12, weight: .medium))
+                    .foregroundStyle(color(for: delta))
+            }
+
+            // Recent top sets for visual context; skipped under two sessions,
+            // where a lone bar says nothing.
+            if recentTops.count >= 2 {
+                GeometryReader { proxy in
+                    MiniBarChart(values: recentTops, width: proxy.size.width)
+                }
+                .frame(height: 24)
+                .padding(.top, Spacing.s)
+                .padding(.bottom, Spacing.s)
             }
         }
         .progressCard()
         .accessibilityElement(children: .combine)
-    }
-
-    private var sparkline: some View {
-        let lineColor = trend.isDowntrend ? SYN.amber : SYN.cyan
-        return Chart(trend.points) { point in
-            LineMark(
-                x: .value("Date", point.date),
-                y: .value("Weight", point.set.weightLbs)
-            )
-            .foregroundStyle(lineColor)
-            .interpolationMethod(.monotone)
-            .lineStyle(StrokeStyle(lineWidth: 2))
-
-            if point.id == trend.latest.id {
-                PointMark(
-                    x: .value("Date", point.date),
-                    y: .value("Weight", point.set.weightLbs)
-                )
-                .foregroundStyle(lineColor)
-                .symbolSize(30)
-            }
-        }
-        .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
-        .chartYScale(domain: trend.weightDomain)
-        .frame(width: 110, height: 44)
-        .accessibilityHidden(true)
     }
 }
 
