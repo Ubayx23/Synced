@@ -233,25 +233,28 @@ struct LogSessionSheet: View {
                 Button {
                     type = option
                 } label: {
+                    // Same treatment as Week pills when selected: climb filled
+                    // cyan, lift outlined cyan, rest outlined muted.
+                    let filled = selected && option.isFilled
                     VStack(spacing: Spacing.s) {
                         Image(systemName: option.symbol)
                             .font(.system(size: 20, weight: .semibold))
                             .frame(height: 24)
+                            .foregroundStyle(filled ? SYN.bg : option.color.opacity(selected ? 1 : 0.6))
                         Text(option.title)
                             .font(.synText(15, weight: .semibold))
+                            .foregroundStyle(filled ? SYN.bg : selected ? option.color : SYN.textFaint)
                     }
-                    .foregroundStyle(selected ? option.color : SYN.textDim)
                     .frame(maxWidth: .infinity)
                     .frame(height: 80)
                     .background(
                         RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                            .fill(selected ? option.color.opacity(0.1) : SYN.surface)
+                            .fill(filled ? option.color : SYN.surface)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                            .stroke(selected ? option.color.opacity(0.8) : SYN.border, lineWidth: 1)
+                            .stroke(selected ? option.color : SYN.border, lineWidth: 1)
                     )
-                    .shadow(color: selected ? option.color.opacity(0.3) : .clear, radius: 14)
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selected ? .isSelected : [])
@@ -358,17 +361,18 @@ struct LogSessionSheet: View {
         HStack(spacing: 0) {
             ForEach(1...5, id: \.self) { value in
                 let selected = rating == value
-                let color = Session.ratingColor(value)
                 Button {
                     rating = selected ? nil : value
                 } label: {
+                    // Filled cyan with near-black text when selected, like
+                    // PrimaryButton.
                     Text("\(value)")
                         .font(.synMono(17, weight: .semibold))
                         .foregroundStyle(selected ? SYN.bg : SYN.textDim)
                         .frame(width: 52, height: 52)
-                        .background(Circle().fill(selected ? color : SYN.surface))
-                        .overlay(Circle().stroke(selected ? color : SYN.border, lineWidth: 1))
-                        .shadow(color: selected ? color.opacity(0.45) : .clear, radius: 12)
+                        .background(Circle().fill(selected ? SYN.cyan : SYN.surface))
+                        .overlay(Circle().stroke(selected ? SYN.cyan : SYN.border, lineWidth: 1))
+                        .shadow(color: selected ? SYN.cyan.opacity(0.45) : .clear, radius: 12)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Rating \(value) of 5")
@@ -541,9 +545,9 @@ private struct OptionPill: View {
                 .padding(.horizontal, Spacing.md)
                 .frame(maxWidth: fillsWidth ? .infinity : nil)
                 .frame(height: 44)
-                .background(Capsule().fill(selected ? color.opacity(0.12) : SYN.surface))
-                .overlay(Capsule().stroke(selected ? color.opacity(0.8) : SYN.border, lineWidth: 1))
-                .shadow(color: selected ? color.opacity(0.3) : .clear, radius: 10)
+                // Border in both states so the tap target always reads.
+                .background(Capsule().fill(selected ? color.opacity(0.08) : SYN.surface))
+                .overlay(Capsule().stroke(selected ? color : SYN.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])

@@ -415,15 +415,18 @@ private struct SessionChip: View {
 
     private var logged: Bool { !session.isPlanned }
 
-    /// Logged rest stays subtle; logged climb and lift fill with their color.
-    private var fill: Color {
-        guard logged else { return session.type.color.opacity(0.08) }
-        return session.type == .rest ? SYN.textDim.opacity(0.25) : session.type.color
-    }
+    /// One accent, told apart by treatment: logged climb is filled cyan,
+    /// logged lift is outlined cyan, logged rest is outlined muted. Planned
+    /// sessions of any type get a dashed outline, since fill now means
+    /// climb rather than logged.
+    private var filled: Bool { logged && session.type.isFilled }
 
     private var foreground: Color {
-        guard logged else { return session.type.color }
-        return session.type == .rest ? SYN.text : SYN.bg
+        filled ? SYN.bg : session.type.color
+    }
+
+    private var outline: StrokeStyle {
+        StrokeStyle(lineWidth: 1, dash: logged ? [] : [3, 3])
     }
 
     /// In compact chips a logged climb shows its grade instead of the icon,
@@ -446,8 +449,8 @@ private struct SessionChip: View {
             .foregroundStyle(foreground)
             .padding(.horizontal, showsLabel || showsGradeOnly ? Spacing.m : 0)
             .frame(minWidth: 32, minHeight: 32)
-            .background(Capsule().fill(fill))
-            .overlay(Capsule().stroke(session.type.color.opacity(logged ? 0 : 0.7), lineWidth: 1))
+            .background(Capsule().fill(filled ? session.type.color : .clear))
+            .overlay(Capsule().stroke(filled ? .clear : session.type.color, style: outline))
             .overlay(alignment: .topTrailing) {
                 if logged, let rating = session.rating {
                     Circle()
@@ -511,10 +514,14 @@ extension SessionType {
         }
     }
 
+    /// Climb is the one filled type; lift and rest are outlined.
+    var isFilled: Bool { self == .climb }
+
+    /// Single brand accent: climb and lift are cyan, rest is muted.
     var color: Color {
         switch self {
         case .climb: return SYN.cyan
-        case .lift:  return SYN.green
+        case .lift:  return SYN.cyan
         case .rest:  return SYN.textDim
         }
     }
@@ -565,13 +572,13 @@ extension Session {
         }
     }
 
-    /// Shared rating palette: 1 red, 2 amber, 3 neutral, 4 green, 5 cyan.
+    /// Shared rating palette: 1 red, 2 amber, 3 neutral, 4 muted cyan, 5 cyan.
     static func ratingColor(_ rating: Int) -> Color {
         switch rating {
         case 1:  return SYN.red
         case 2:  return SYN.amber
         case 3:  return SYN.textDim
-        case 4:  return SYN.green
+        case 4:  return SYN.cyan.opacity(0.6)
         default: return SYN.cyan
         }
     }

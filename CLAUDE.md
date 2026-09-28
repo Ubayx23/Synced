@@ -38,6 +38,13 @@ What stays fixed is the design language, not the layouts: dark surfaces,
 cyan accent, Geist type, and the existing tokens and components. New screens
 should look like they belong to the same app.
 
+Accent color: cyan (SYN.cyan) is the single brand accent. Session types are
+differentiated by icon plus filled-vs-outlined pill treatment (climb filled,
+lift outlined, rest outlined-muted), never by hue. Planned sessions use a
+dashed outline. Selected states across the app use cyan. Green (SYN.green)
+is reserved for a future semantic-success role and should have zero usages
+in shipped screens.
+
 ## MVP scope (v0.1, "ugly launch")
 Screens:
 1. Welcome (signed-out entry: Create account or I already have an account)

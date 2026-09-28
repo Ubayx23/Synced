@@ -450,14 +450,15 @@ struct ExercisesEditor: View {
                 withAnimation(structural) { exercises.append(draft) }
                 focus = .name(draft.id)
             } label: {
+                // SecondaryButton pattern in the brand accent.
                 Label("Add exercise", systemImage: "plus")
                     .font(.synText(15, weight: .medium))
-                    .foregroundStyle(atLimit ? SYN.textFaint : SYN.textDim)
+                    .foregroundStyle(atLimit ? SYN.textFaint : SYN.cyan)
                     .frame(maxWidth: .infinity)
                     .frame(height: 48)
                     .background(
-                        RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                            .strokeBorder(SYN.border, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                        RoundedRectangle(cornerRadius: Radius.button, style: .continuous)
+                            .strokeBorder(atLimit ? SYN.border : SYN.cyan, lineWidth: 1)
                     )
                     .contentShape(Rectangle())
             }
