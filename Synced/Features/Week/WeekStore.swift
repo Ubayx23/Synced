@@ -355,7 +355,7 @@ private struct SessionRow: Decodable {
 
 /// Decodes lift_exercises one element at a time so a malformed entry is
 /// skipped instead of failing the whole row.
-private struct LiftExerciseList: Decodable {
+struct LiftExerciseList: Decodable {
     let items: [LiftExercise]
 
     private struct Skip: Decodable {}

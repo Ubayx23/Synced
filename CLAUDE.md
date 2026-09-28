@@ -115,6 +115,10 @@ Tables:
   shoulders, arms, legs, core (matching regions on the Recovery map).
   `MuscleGroup.expand` reads legacy values: 'full_body' as every group, and
   'biceps', 'triceps', 'forearms' as arms. Rows are never rewritten.
+  Recovery also reads exercise-level muscles from `lift_exercises` through
+  the static ExerciseCatalog; an exercise not in the catalog falls back to
+  its own muscle_group tag, then to the session's muscle_groups. No schema
+  change.
 - `rating INTEGER` (1 to 5, optional), `notes TEXT` (optional)
 - `lift_exercises JSONB`: written by the Log sheet, read by Progress and
   by the exercise suggestions. Shape:
@@ -140,10 +144,13 @@ Main app (Features/):
   LogSessionSheet, ExercisesEditor.
 - Progress/: ProgressScreen and ProgressStore (one fetch, all aggregation
   client side).
-- Recovery/: RecoveryView (MuscleMap front anatomy; ready muscles glow cyan,
-  worked ones turn gray), RecoveryStore (days since each group was trained,
-  last 14 days), and BodyModel (male or female, picked at sign up and stored
-  on the device).
+- Recovery/: RecoveryView (MuscleMap front and back anatomy; ready muscles
+  glow cyan, worked ones turn gray; tap a muscle for a label),
+  RecoveryStore (days since each of 18 TrainedMuscles was trained, last 14
+  days; rolled up to groups only for the READY TO TRAIN count), Muscles.swift
+  (TrainedMuscle and its parent group), ExerciseCatalog.swift (static
+  catalog of about 110 lifts with primary and secondary muscles), and
+  BodyModel (male or female, picked at sign up and stored on the device).
 - Reminders/: ReminderScheduler (local daily reminder, no APNs).
 - Profile/: ProfileSheet (daily reminder toggle and time, sign out).
 - Auth/: WelcomeView, SignUpView, SignInView.

@@ -27,18 +27,27 @@ struct RecoveryView: View {
         BodyGender(rawValue: bodyModel) ?? .male
     }
 
-    /// App groups to MuscleMap muscles, covering both sides; a muscle not
-    /// drawn on the current side is simply skipped. MuscleMap's back view
-    /// has no separate lats, rhomboids, or rear delts: lats and rhomboids sit
-    /// inside upperBack, rear delts inside deltoids.
-    private static let muscles: [MuscleGroup: [Muscle]] = [
-        .chest:     [.chest],                                   // front
-        .shoulders: [.deltoids],                                // both
-        .back:      [.trapezius, .upperBack],                   // traps both, upper back on back
-        .arms:      [.biceps, .triceps, .forearm],              // biceps front; triceps, forearm both
-        .core:      [.abs, .obliques, .lowerBack],              // abs, obliques front; lower back on back
-        .legs:      [.quadriceps, .adductors, .calves, .tibialis,
-                     .hamstring, .gluteal],                     // quads, shins front; hams, glutes back
+    /// MuscleMap regions to the app's muscles, both sides; a region not
+    /// drawn on the current side is skipped. Some regions cover several
+    /// muscles because MuscleMap draws no separate lats, rhomboids, or delt
+    /// heads: a region reads as its most recently worked muscle.
+    private static let regions: [Muscle: [TrainedMuscle]] = [
+        .chest:      [.pecs],                               // front
+        .trapezius:  [.traps],                              // both
+        .upperBack:  [.lats, .rhomboids],                   // back
+        .lowerBack:  [.erectors],                           // back
+        .deltoids:   [.frontDelts, .sideDelts, .rearDelts], // both
+        .biceps:     [.biceps],                             // front
+        .triceps:    [.triceps],                            // both
+        .forearm:    [.forearms],                           // both
+        .quadriceps: [.quads],                              // front
+        .hamstring:  [.hamstrings],                         // back
+        .gluteal:    [.glutes],                             // back
+        .adductors:  [.adductors],                          // both
+        .calves:     [.calves],                             // both
+        .tibialis:   [.calves],                             // front shin reads with the lower leg
+        .abs:        [.abs],                                // front
+        .obliques:   [.obliques],                           // front
     ]
 
     var body: some View {
@@ -146,7 +155,7 @@ struct RecoveryView: View {
             .accessibilityElement(children: .combine)
 
             VStack(alignment: .trailing, spacing: Spacing.xs) {
-                Text("\(store.freshCount)")
+                Text("\(store.readyCount)")
                     .font(.synMono(48, weight: .bold))
                     .foregroundStyle(SYN.text)
                     .contentTransition(.numericText())
@@ -234,10 +243,10 @@ struct RecoveryView: View {
 
     private func highlighted(_ base: BodyView, when include: (RecoveryState) -> Bool) -> BodyView {
         var view = base
-        for group in MuscleGroup.allCases {
-            let state = store.state(for: group)
-            guard include(state), let muscles = Self.muscles[group] else { continue }
-            view = view.highlight(muscles, color: state.color)
+        for (region, muscles) in Self.regions {
+            let state = store.state(forAnyOf: muscles)
+            guard include(state) else { continue }
+            view = view.highlight(region, color: state.color)
         }
         return view
     }
@@ -267,24 +276,26 @@ struct RecoveryView: View {
     }
 
     private var accessibilitySummary: String {
-        let worked = MuscleGroup.allCases.filter { store.state(for: $0) == .worked }.map(\.title)
-        let recovering = MuscleGroup.allCases.filter { store.state(for: $0) == .recovering }.map(\.title)
+        func groupState(_ group: MuscleGroup) -> RecoveryState {
+            store.state(forAnyOf: TrainedMuscle.forParentGroup(group))
+        }
+        let worked = MuscleGroup.allCases.filter { groupState($0) == .worked }.map(\.title)
+        let recovering = MuscleGroup.allCases.filter { groupState($0) == .recovering }.map(\.title)
         var parts: [String] = []
         if !worked.isEmpty { parts.append("Worked: \(worked.joined(separator: ", "))") }
         if !recovering.isEmpty { parts.append("Recovering: \(recovering.joined(separator: ", "))") }
-        parts.append("\(store.freshCount) groups ready")
+        parts.append("\(store.readyCount) groups ready")
         return parts.joined(separator: ". ")
     }
 
     // MARK: - Tap label
 
-    /// App group for a tapped MuscleMap muscle. Always-visible sub-groups
-    /// report their parent (adductors come back as hamstring), so match on
-    /// a mapped muscle's parent too. Head, hands, knees, and feet have none.
-    private static func group(for tapped: Muscle) -> MuscleGroup? {
-        MuscleGroup.allCases.first { group in
-            (muscles[group] ?? []).contains { $0 == tapped || $0.parentGroup == tapped }
-        }
+    /// The app muscles behind a tapped MuscleMap region. Always-visible
+    /// sub-groups report their parent (adductors come back as hamstring), so
+    /// the hamstring region answers for them. Head, hands, knees, and feet
+    /// have none.
+    private static func trainedMuscles(for tapped: Muscle) -> [TrainedMuscle]? {
+        regions[tapped] ?? tapped.parentGroup.flatMap { regions[$0] }
     }
 
     /// Pairs the two halves of one tap on the next run loop turn: a muscle
@@ -299,18 +310,23 @@ struct RecoveryView: View {
             let point = pendingPoint
             pendingMuscle = nil
             pendingPoint = nil
-            guard let muscle, let group = Self.group(for: muscle), let point else {
+            guard
+                let muscle,
+                let trained = Self.trainedMuscles(for: muscle),
+                let group = trained.first?.parentGroup,
+                let point
+            else {
                 dismissLabel()
                 return
             }
-            showLabel(for: group, at: point)
+            showLabel(for: group, muscles: trained, at: point)
         }
     }
 
     /// Replaces any current label; tapping the same group again restarts the
     /// hold timer.
-    private func showLabel(for group: MuscleGroup, at point: CGPoint) {
-        let next = MuscleLabel(group: group, point: point)
+    private func showLabel(for group: MuscleGroup, muscles: [TrainedMuscle], at point: CGPoint) {
+        let next = MuscleLabel(group: group, muscles: muscles, point: point)
         withAnimation(.easeOut(duration: 0.15)) { label = next }
         Task {
             try? await Task.sleep(for: Self.labelHold)
@@ -324,9 +340,9 @@ struct RecoveryView: View {
     }
 
     /// "Trained today", "Trained yesterday", "Trained 3 days ago", or
-    /// "Not logged in 14 days".
-    private func contextLine(for group: MuscleGroup) -> String {
-        switch store.daysSince[group] {
+    /// "Not logged in 14 days", for the tapped region's muscles.
+    private func contextLine(for label: MuscleLabel) -> String {
+        switch store.daysSince(anyOf: label.muscles) {
         case nil:    return "Not logged in \(RecoveryStore.windowDays) days"
         case 0:      return "Trained today"
         case 1:      return "Trained yesterday"
@@ -352,7 +368,7 @@ struct RecoveryView: View {
                     Text(label.group.title)
                         .font(.synText(15, weight: .semibold))
                         .foregroundStyle(SYN.text)
-                    Text(contextLine(for: label.group))
+                    Text(contextLine(for: label))
                         .font(.synText(12))
                         .foregroundStyle(SYN.textDim)
                 }
@@ -406,5 +422,6 @@ struct RecoveryView: View {
 private struct MuscleLabel: Equatable {
     let id = UUID()
     let group: MuscleGroup
+    let muscles: [TrainedMuscle]
     let point: CGPoint
 }
