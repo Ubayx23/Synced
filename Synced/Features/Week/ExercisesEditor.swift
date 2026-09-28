@@ -233,11 +233,12 @@ struct ExercisesEditor: View {
                 Button { exercise.wrappedValue.muscle = muscle } label: {
                     Text(muscle.title)
                         .font(.synText(12, weight: .semibold))
-                        .foregroundStyle(selected ? SessionType.lift.color : SYN.textFaint)
+                        // Neutral selection, matching the focus chips.
+                        .foregroundStyle(selected ? SYN.text : SYN.textFaint)
                         .padding(.horizontal, Spacing.s)
                         .frame(height: 26)
-                        .background(Capsule().fill(selected ? SessionType.lift.color.opacity(0.12) : .clear))
-                        .overlay(Capsule().stroke(selected ? SessionType.lift.color.opacity(0.6) : SYN.border, lineWidth: 1))
+                        .background(Capsule().fill(selected ? SYN.surfaceHi : .clear))
+                        .overlay(Capsule().stroke(selected ? SYN.text.opacity(0.9) : SYN.border, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Counts for \(muscle.title)")

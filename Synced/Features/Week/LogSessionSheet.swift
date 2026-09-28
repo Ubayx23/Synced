@@ -306,7 +306,6 @@ struct LogSessionSheet: View {
                     ForEach(0...17, id: \.self) { value in
                         OptionPill(
                             title: "V\(value)",
-                            color: SessionType.climb.color,
                             selected: grades.contains(value),
                             mono: true
                         ) {
@@ -343,7 +342,6 @@ struct LogSessionSheet: View {
             ForEach(MuscleGroup.allCases) { option in
                 OptionPill(
                     title: option.title,
-                    color: SessionType.lift.color,
                     selected: muscles.contains(option),
                     fillsWidth: true
                 ) {
@@ -364,15 +362,14 @@ struct LogSessionSheet: View {
                 Button {
                     rating = selected ? nil : value
                 } label: {
-                    // Filled cyan with near-black text when selected, like
-                    // PrimaryButton.
+                    // Neutral selection: raised surface, white outline and
+                    // number. Cyan stays for the type card and actions.
                     Text("\(value)")
                         .font(.synMono(17, weight: .semibold))
-                        .foregroundStyle(selected ? SYN.bg : SYN.textDim)
+                        .foregroundStyle(selected ? SYN.text : SYN.textDim)
                         .frame(width: 52, height: 52)
-                        .background(Circle().fill(selected ? SYN.cyan : SYN.surface))
-                        .overlay(Circle().stroke(selected ? SYN.cyan : SYN.border, lineWidth: 1))
-                        .shadow(color: selected ? SYN.cyan.opacity(0.45) : .clear, radius: 12)
+                        .background(Circle().fill(selected ? SYN.surfaceHi : SYN.surface))
+                        .overlay(Circle().stroke(selected ? SYN.text.opacity(0.9) : SYN.border, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Rating \(value) of 5")
@@ -381,7 +378,7 @@ struct LogSessionSheet: View {
                 if value < 5 { Spacer(minLength: 0) }
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: rating)
+        .animation(.easeOut(duration: 0.15), value: rating)
     }
 
     private var notesField: some View {
@@ -514,11 +511,14 @@ private struct SendChip: View {
                     .font(.system(size: 14, weight: .semibold))
                     .opacity(0.8)
             }
-            .foregroundStyle(SYN.bg)
+            // Neutral like the other selections; cyan stays with the type
+            // card and actions.
+            .foregroundStyle(SYN.text)
             .padding(.leading, Spacing.m)
             .padding(.trailing, Spacing.s)
             .frame(height: 36)
-            .background(Capsule().fill(SessionType.climb.color))
+            .background(Capsule().fill(SYN.surfaceHi))
+            .overlay(Capsule().stroke(SYN.text.opacity(0.9), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("V\(grade), \(count) \(count == 1 ? "send" : "sends")")
@@ -528,10 +528,11 @@ private struct SendChip: View {
 
 // MARK: - Option pill
 
-/// Single-select pill used for grades and muscle groups.
+/// Pill used for grades and muscle groups. Selection is neutral (raised
+/// surface, white outline and label) so cyan stays with the type card and
+/// the actions.
 private struct OptionPill: View {
     let title: String
-    let color: Color
     let selected: Bool
     var mono: Bool = false
     var fillsWidth: Bool = false
@@ -541,16 +542,16 @@ private struct OptionPill: View {
         Button(action: action) {
             Text(title)
                 .font(mono ? .synMono(15, weight: .semibold) : .synText(15, weight: .semibold))
-                .foregroundStyle(selected ? color : SYN.textDim)
+                .foregroundStyle(selected ? SYN.text : SYN.textDim)
                 .padding(.horizontal, Spacing.md)
                 .frame(maxWidth: fillsWidth ? .infinity : nil)
                 .frame(height: 44)
                 // Border in both states so the tap target always reads.
-                .background(Capsule().fill(selected ? color.opacity(0.08) : SYN.surface))
-                .overlay(Capsule().stroke(selected ? color : SYN.border, lineWidth: 1))
+                .background(Capsule().fill(selected ? SYN.surfaceHi : SYN.surface))
+                .overlay(Capsule().stroke(selected ? SYN.text.opacity(0.9) : SYN.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .animation(.easeOut(duration: 0.18), value: selected)
+        .animation(.easeOut(duration: 0.15), value: selected)
     }
 }
