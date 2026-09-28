@@ -4,35 +4,36 @@ import OSLog
 import Supabase
 import SwiftUI
 
-/// Three states read at a glance: brightness rises with recent load.
+/// Three states read at a glance: one cyan hue that dims to gray as a
+/// muscle gets more recently worked.
 enum RecoveryState {
     /// 5 or more days since trained, or not trained in the window.
-    case fresh
-    /// 3 to 4 days since trained.
-    case moderate
-    /// 0 to 2 days since trained.
-    case fatigued
+    case ready
+    /// 2 to 4 days since trained.
+    case recovering
+    /// Trained today or yesterday.
+    case worked
 
     init(daysSince: Int?) {
         switch daysSince {
-        case .some(let days) where days <= 2: self = .fatigued
-        case .some(let days) where days <= 4: self = .moderate
-        default: self = .fresh
+        case .some(let days) where days <= 1: self = .worked
+        case .some(let days) where days <= 4: self = .recovering
+        default: self = .ready
         }
     }
 
     var color: Color {
         switch self {
-        case .fresh:    return SYN.muscleFresh
-        case .moderate: return SYN.muscleModerate
-        case .fatigued: return SYN.muscleFatigued
+        case .ready:      return SYN.muscleReady
+        case .recovering: return SYN.muscleRecovering
+        case .worked:     return SYN.muscleWorked
         }
     }
 }
 
 /// Days since each muscle group was last trained, from logged sessions in
-/// the last 14 days. Legacy "arms" and "full_body" rows count through
-/// `MuscleGroup.expand`.
+/// the last 14 days. Legacy values ("full_body", "biceps", "triceps",
+/// "forearms") count through `MuscleGroup.expand`.
 @Observable
 final class RecoveryStore {
     static let windowDays = 14
@@ -41,6 +42,9 @@ final class RecoveryStore {
     private(set) var daysSince: [MuscleGroup: Int] = [:]
     /// Any logged session in the window, of any type.
     private(set) var hasSessions = false
+    /// Days since the most recent logged climb or lift (not just lifts with
+    /// muscle groups; rest days do not count); nil when none in the window.
+    private(set) var daysSinceLastWorkout: Int?
     private(set) var loaded = false
 
     private static let log = Logger(subsystem: "page.synced.app", category: "RecoveryStore")
@@ -50,15 +54,13 @@ final class RecoveryStore {
     }
 
     var freshCount: Int {
-        MuscleGroup.allCases.filter { state(for: $0) == .fresh }.count
+        MuscleGroup.allCases.filter { state(for: $0) == .ready }.count
     }
-
-    /// Fewest days since any group was trained; nil when none were.
-    var daysSinceLastWorkout: Int? { daysSince.values.min() }
 
     @MainActor
     func load() async {
         struct Row: Decodable {
+            let session_type: String?
             let scheduled_date: String?
             let muscle_groups: [String]?
         }
@@ -70,7 +72,7 @@ final class RecoveryStore {
             // Up to today only: a future-dated log has no recovery meaning yet.
             let rows: [Row] = try await supabase
                 .from("sessions")
-                .select("scheduled_date, muscle_groups")
+                .select("session_type, scheduled_date, muscle_groups")
                 .eq("user_id", value: userID.uuidString)
                 .eq("is_planned", value: false)
                 .gte("scheduled_date", value: WeekStore.dayFormatter.string(from: start))
@@ -79,17 +81,22 @@ final class RecoveryStore {
                 .value
 
             var result: [MuscleGroup: Int] = [:]
+            var mostRecent: Int?
             for row in rows {
                 guard
                     let raw = row.scheduled_date,
                     let date = WeekStore.dayFormatter.date(from: String(raw.prefix(10))),
                     let days = cal.dateComponents([.day], from: date, to: today).day
                 else { continue }
+                if row.session_type != SessionType.rest.rawValue {
+                    mostRecent = min(mostRecent ?? days, days)
+                }
                 for group in MuscleGroup.expand(row.muscle_groups ?? []) {
                     result[group] = min(result[group] ?? days, days)
                 }
             }
             daysSince = result
+            daysSinceLastWorkout = mostRecent
             hasSessions = !rows.isEmpty
             loaded = true
         } catch is CancellationError {

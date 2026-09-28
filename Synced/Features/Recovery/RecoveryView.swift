@@ -34,19 +34,23 @@ struct RecoveryView: View {
                     .padding(.top, Spacing.md)
                     .padding(.bottom, Spacing.lg)
 
-                if store.loaded && !store.hasSessions {
-                    Text("No sessions logged yet. Log one to see recovery.")
-                        .font(.synText(14))
-                        .foregroundStyle(SYN.textDim)
-                        .frame(maxWidth: .infinity)
-                } else {
-                    stats
-                }
+                stats
 
                 // Takes all remaining height; MuscleMap scales the body to fit.
                 anatomy
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(.vertical, Spacing.s)
+
+                // Only before the first logged session in the window: frames
+                // the all-ready body as a starting point.
+                if store.loaded && !store.hasSessions {
+                    Text("Log a session to see your recovery come to life.")
+                        .font(.synText(13))
+                        .foregroundStyle(SYN.textDim)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, Spacing.md)
+                }
 
                 // Not a scroll view, so the tab bar's safe area already
                 // clears it; no extra tab bar clearance needed.
@@ -94,9 +98,13 @@ struct RecoveryView: View {
     private var stats: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(store.daysSinceLastWorkout.map(String.init) ?? "-")
+                Text(daysSinceText)
                     .font(.synMono(48, weight: .bold))
                     .foregroundStyle(SYN.text)
+                    // "Yesterday" is wider than half the row at 48pt; shrink
+                    // it rather than wrap or crowd the right stat.
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
                     .contentTransition(.numericText())
                 EyebrowText(text: "Days since your last workout")
                     .foregroundStyle(SYN.textDim)
@@ -118,6 +126,16 @@ struct RecoveryView: View {
         }
     }
 
+    /// "Today" and "Yesterday" read better than 0 and 1.
+    private var daysSinceText: String {
+        switch store.daysSinceLastWorkout {
+        case nil:     return "-"
+        case 0:       return "Today"
+        case 1:       return "Yesterday"
+        case let n?:  return "\(n) days"
+        }
+    }
+
     // MARK: - Anatomy
 
     /// Two stacked copies of the same front body. The base shows every
@@ -126,8 +144,11 @@ struct RecoveryView: View {
     /// at once and the glow belongs on ready ones only.
     private var anatomy: some View {
         ZStack {
-            highlighted(BodyView(gender: gender, side: .front, style: baseStyle)) { _ in true }
-            highlighted(BodyView(gender: gender, side: .front, style: glowStyle)) { $0 == .fresh }
+            // Ready groups are left to the glow layer so their color is drawn
+            // once; drawing them on both layers doubles the opacity and undoes
+            // the softened ready tone.
+            highlighted(BodyView(gender: gender, side: .front, style: baseStyle)) { $0 != .ready }
+            highlighted(BodyView(gender: gender, side: .front, style: glowStyle)) { $0 == .ready }
                 .allowsHitTesting(false)
         }
         .animation(.easeOut(duration: 0.3), value: store.daysSince)
@@ -170,12 +191,12 @@ struct RecoveryView: View {
     }
 
     private var accessibilitySummary: String {
-        let fatigued = MuscleGroup.allCases.filter { store.state(for: $0) == .fatigued }.map(\.title)
-        let moderate = MuscleGroup.allCases.filter { store.state(for: $0) == .moderate }.map(\.title)
+        let worked = MuscleGroup.allCases.filter { store.state(for: $0) == .worked }.map(\.title)
+        let recovering = MuscleGroup.allCases.filter { store.state(for: $0) == .recovering }.map(\.title)
         var parts: [String] = []
-        if !fatigued.isEmpty { parts.append("Fatigued: \(fatigued.joined(separator: ", "))") }
-        if !moderate.isEmpty { parts.append("Moderate: \(moderate.joined(separator: ", "))") }
-        parts.append("\(store.freshCount) groups recovered")
+        if !worked.isEmpty { parts.append("Worked: \(worked.joined(separator: ", "))") }
+        if !recovering.isEmpty { parts.append("Recovering: \(recovering.joined(separator: ", "))") }
+        parts.append("\(store.freshCount) groups ready")
         return parts.joined(separator: ". ")
     }
 
@@ -183,9 +204,9 @@ struct RecoveryView: View {
 
     private var legend: some View {
         HStack(spacing: Spacing.lg) {
-            legendItem(RecoveryState.fresh.color, "Recovered")
-            legendItem(RecoveryState.moderate.color, "Moderate")
-            legendItem(RecoveryState.fatigued.color, "Fatigued")
+            legendItem(RecoveryState.ready.color, "Ready")
+            legendItem(RecoveryState.recovering.color, "Recovering")
+            legendItem(RecoveryState.worked.color, "Worked")
         }
     }
 
