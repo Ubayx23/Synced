@@ -7,6 +7,7 @@ struct RootView: View {
     @State private var session = SessionStore()
     @State private var showingLaunch: Bool = true
     @State private var authPath: [AuthRoute] = []
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -24,7 +25,22 @@ struct RootView: View {
         .environment(session)
         .task { await session.bootstrap() }
         // Signing out lands on Welcome, not on whichever auth screen was last open.
-        .onChange(of: session.phase) { _, _ in authPath = [] }
+        .onChange(of: session.phase) { _, phase in
+            authPath = []
+            switch phase {
+            // Reminders belong to the signed-in account; the next one starts fresh.
+            case .signedOut: Task { await ReminderScheduler.reset() }
+            case .signedIn:  Task { await ReminderScheduler.reschedule() }
+            case .loading:   break
+            }
+        }
+        // Back in the foreground: refresh reminder content for the new day
+        // and anything logged elsewhere.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, session.phase == .signedIn {
+                Task { await ReminderScheduler.reschedule() }
+            }
+        }
         .animation(.easeInOut(duration: 0.35), value: showingLaunch)
         .animation(.easeInOut(duration: 0.35), value: session.phase)
         .preferredColorScheme(.dark)

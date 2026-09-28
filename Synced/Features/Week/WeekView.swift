@@ -13,9 +13,14 @@ struct WeekView: View {
     @State private var deleteError: String?
     /// 0 is the current week; -1 last week, 1 next week.
     @State private var weekOffset = 0
+    /// Refreshed whenever the app becomes active, so an app left open
+    /// overnight shows the new day without a relaunch.
+    @State private var today = Date()
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var router = AppRouter.shared
 
     private var days: [Date] {
-        let anchor = WeekStore.calendar.date(byAdding: .weekOfYear, value: weekOffset, to: Date()) ?? Date()
+        let anchor = WeekStore.calendar.date(byAdding: .weekOfYear, value: weekOffset, to: today) ?? today
         return WeekStore.weekDays(containing: anchor)
     }
     private let rowGap = Spacing.s
@@ -42,6 +47,7 @@ struct WeekView: View {
                             ForEach(days, id: \.self) { day in
                                 DayRow(
                                     day: day,
+                                    today: today,
                                     sessions: store.sessions(on: day),
                                     height: rowHeight(for: proxy.size.height),
                                     onPlan: { planTarget = PlanTarget(day: day) },
@@ -60,7 +66,19 @@ struct WeekView: View {
             .padding(.horizontal, Spacing.pageH)
         }
         // Reloads on every week change; a newer change cancels the older fetch.
-        .task(id: weekOffset) { await store.load(week: days) }
+        // Reloads when the visible week changes, from the chevrons or from
+        // the calendar rolling into a new week while the app was away.
+        .task(id: days.first) { await store.load(week: days) }
+        // A tapped reminder, whether the app was running or cold launched.
+        .onChange(of: router.pendingLogFromReminder) { _, pending in
+            if pending { Task { await openLogFromReminder() } }
+        }
+        .onAppear {
+            if router.pendingLogFromReminder { Task { await openLogFromReminder() } }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { today = Date() }
+        }
         .sheet(item: $planTarget) { target in
             PlanSessionSheet(day: target.day, store: store)
         }
@@ -93,6 +111,22 @@ struct WeekView: View {
         ) {
             Button("OK", role: .cancel) {}
         }
+    }
+
+    /// Opens the Log sheet for today: pre-filled with today's first planned
+    /// session if there is one, otherwise blank. Jumps back to the current
+    /// week and closes any other sheet first.
+    @MainActor
+    private func openLogFromReminder() async {
+        router.pendingLogFromReminder = false
+        planTarget = nil
+        showingProfile = false
+        logTarget = nil
+        today = Date()
+        weekOffset = 0
+        await store.load(week: WeekStore.weekDays(containing: today))
+        let planned = store.sessions(on: today).first { $0.isPlanned }
+        logTarget = LogTarget(session: planned)
     }
 
     private func delete(_ session: Session) {
@@ -288,6 +322,9 @@ private struct LogTarget: Identifiable {
 
 private struct DayRow: View {
     let day: Date
+    /// Passed in rather than read from the clock, so the row redraws when
+    /// the day changes.
+    let today: Date
     let sessions: [Session]
     let height: CGFloat
     let onPlan: () -> Void
@@ -295,8 +332,8 @@ private struct DayRow: View {
     let onDelete: (Session) -> Void
 
     private var cal: Calendar { WeekStore.calendar }
-    private var isToday: Bool { cal.isDateInToday(day) }
-    private var isPast: Bool { day < cal.startOfDay(for: Date()) }
+    private var isToday: Bool { cal.isDate(day, inSameDayAs: today) }
+    private var isPast: Bool { day < cal.startOfDay(for: today) }
 
     private var dateColor: Color {
         if isToday { return SYN.cyan }
@@ -378,15 +415,18 @@ private struct SessionChip: View {
 
     private var logged: Bool { !session.isPlanned }
 
-    /// Logged rest stays subtle; logged climb and lift fill with their color.
-    private var fill: Color {
-        guard logged else { return session.type.color.opacity(0.08) }
-        return session.type == .rest ? SYN.textDim.opacity(0.25) : session.type.color
-    }
+    /// One accent, told apart by treatment: logged climb is filled cyan,
+    /// logged lift is outlined cyan, logged rest is outlined muted. Planned
+    /// sessions of any type get a dashed outline, since fill now means
+    /// climb rather than logged.
+    private var filled: Bool { logged && session.type.isFilled }
 
     private var foreground: Color {
-        guard logged else { return session.type.color }
-        return session.type == .rest ? SYN.text : SYN.bg
+        filled ? SYN.bg : session.type.color
+    }
+
+    private var outline: StrokeStyle {
+        StrokeStyle(lineWidth: 1, dash: logged ? [] : [3, 3])
     }
 
     /// In compact chips a logged climb shows its grade instead of the icon,
@@ -409,8 +449,8 @@ private struct SessionChip: View {
             .foregroundStyle(foreground)
             .padding(.horizontal, showsLabel || showsGradeOnly ? Spacing.m : 0)
             .frame(minWidth: 32, minHeight: 32)
-            .background(Capsule().fill(fill))
-            .overlay(Capsule().stroke(session.type.color.opacity(logged ? 0 : 0.7), lineWidth: 1))
+            .background(Capsule().fill(filled ? session.type.color : .clear))
+            .overlay(Capsule().stroke(filled ? .clear : session.type.color, style: outline))
             .overlay(alignment: .topTrailing) {
                 if logged, let rating = session.rating {
                     Circle()
@@ -474,10 +514,14 @@ extension SessionType {
         }
     }
 
+    /// Climb is the one filled type; lift and rest are outlined.
+    var isFilled: Bool { self == .climb }
+
+    /// Single brand accent: climb and lift are cyan, rest is muted.
     var color: Color {
         switch self {
         case .climb: return SYN.cyan
-        case .lift:  return SYN.green
+        case .lift:  return SYN.cyan
         case .rest:  return SYN.textDim
         }
     }
@@ -491,7 +535,7 @@ extension MuscleGroup {
         case .shoulders: return "Shoulders"
         case .arms:      return "Arms"
         case .legs:      return "Legs"
-        case .fullBody:  return "Full body"
+        case .core:      return "Core"
         }
     }
 }
@@ -528,13 +572,13 @@ extension Session {
         }
     }
 
-    /// Shared rating palette: 1 red, 2 amber, 3 neutral, 4 green, 5 cyan.
+    /// Shared rating palette: 1 red, 2 amber, 3 neutral, 4 muted cyan, 5 cyan.
     static func ratingColor(_ rating: Int) -> Color {
         switch rating {
         case 1:  return SYN.red
         case 2:  return SYN.amber
         case 3:  return SYN.textDim
-        case 4:  return SYN.green
+        case 4:  return SYN.cyan.opacity(0.6)
         default: return SYN.cyan
         }
     }

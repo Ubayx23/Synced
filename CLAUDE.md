@@ -38,13 +38,23 @@ What stays fixed is the design language, not the layouts: dark surfaces,
 cyan accent, Geist type, and the existing tokens and components. New screens
 should look like they belong to the same app.
 
+Accent color: cyan (SYN.cyan) is the single brand accent. Session types are
+differentiated by icon plus filled-vs-outlined pill treatment (climb filled,
+lift outlined, rest outlined-muted), never by hue. Planned sessions use a
+dashed outline. Selected states across the app use cyan. Green (SYN.green)
+is reserved for a future semantic-success role and should have zero usages
+in shipped screens.
+
 ## MVP scope (v0.1, "ugly launch")
 Screens:
 1. Welcome (signed-out entry: Create account or I already have an account)
 2. Sign up / Sign in (pushed from Welcome)
 3. Week (tab 1): one Monday to Sunday week, chevrons to move between weeks
-4. Progress (tab 2): headline, climb grade pyramid, lift trend cards, footer
-5. Plan session sheet, Log session sheet, Profile sheet
+4. Recovery (tab 2): anatomy view with muscle groups colored by recent
+   training load
+5. Progress (tab 3): headline, climb grade pyramid, lift trend cards, footer
+6. Plan session sheet, Log session sheet, Profile sheet (daily reminder
+   setting and sign out)
 
 Plan and log are one flow:
 - Tap a day in the Week view to add a planned session.
@@ -72,11 +82,13 @@ Out of scope for MVP, do not build or preserve:
 - SwiftUI, iOS 17+, Swift 5.10
 - @Observable for state
 - XcodeGen: project.yml is the source of truth for the Xcode project
-- Supabase Swift SDK (the only SPM dependency) for auth and data
+- Supabase Swift SDK for auth and data
+- MuscleMap (SPM, melihcolpan/MuscleMap) for the Recovery anatomy view
 - Geist and Geist Mono, bundled in Synced/Resources/Fonts and registered via
   UIAppFonts in project.yml. Always go through `Font.synDisplay`,
   `Font.synText`, and `Font.synMono`; never reference a font name directly.
-- No new dependencies without explicit instruction.
+- No new dependencies without explicit instruction. Current dependencies:
+  Supabase Swift SDK, MuscleMap.
 
 ## Supabase
 Project URL: https://olkjemjxsuabmxuqtzsf.supabase.co
@@ -106,7 +118,14 @@ Tables:
 - `is_planned BOOLEAN DEFAULT false`: true until the session is logged
 - `climb_grades_sent INTEGER[]`: one entry per send, e.g. [2, 2, 3]
 - `climb_grade_v INTEGER`: mirrors max(climb_grades_sent), 0 to 17
-- `muscle_groups TEXT[]`: lift focus, e.g. ['chest', 'arms']
+- `muscle_groups TEXT[]`: lift focus. Values written: chest, back,
+  shoulders, arms, legs, core (matching regions on the Recovery map).
+  `MuscleGroup.expand` reads legacy values: 'full_body' as every group, and
+  'biceps', 'triceps', 'forearms' as arms. Rows are never rewritten.
+  Recovery also reads exercise-level muscles from `lift_exercises` through
+  the static ExerciseCatalog; an exercise not in the catalog falls back to
+  its own muscle_group tag, then to the session's muscle_groups. No schema
+  change.
 - `rating INTEGER` (1 to 5, optional), `notes TEXT` (optional)
 - `lift_exercises JSONB`: written by the Log sheet, read by Progress and
   by the exercise suggestions. Shape:
@@ -126,13 +145,21 @@ Entry and routing:
   `markSignedIn()`, `signOut()`.
 
 Main app (Features/):
-- MainTabView (App/): Week and Progress tabs. Each tab's header has the
-  profile icon that opens ProfileSheet.
+- MainTabView (App/): Week, Recovery, and Progress tabs, in that order.
+  Each tab's header has the profile icon that opens ProfileSheet.
 - Week/: WeekView, WeekStore (fetch, plan, log, delete), PlanSessionSheet,
   LogSessionSheet, ExercisesEditor.
 - Progress/: ProgressScreen and ProgressStore (one fetch, all aggregation
   client side).
-- Profile/: ProfileSheet (sign out).
+- Recovery/: RecoveryView (MuscleMap front and back anatomy; ready muscles
+  glow cyan, worked ones turn gray; tap a muscle for a label),
+  RecoveryStore (days since each of 18 TrainedMuscles was trained, last 14
+  days; rolled up to groups only for the READY TO TRAIN count), Muscles.swift
+  (TrainedMuscle and its parent group), ExerciseCatalog.swift (static
+  catalog of about 110 lifts with primary and secondary muscles), and
+  BodyModel (male or female, picked at sign up and stored on the device).
+- Reminders/: ReminderScheduler (local daily reminder, no APNs).
+- Profile/: ProfileSheet (daily reminder toggle and time, sign out).
 - Auth/: WelcomeView, SignUpView, SignInView.
 
 Shared UI to reuse:

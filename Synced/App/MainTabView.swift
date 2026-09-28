@@ -1,8 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// Signed-in root: Week and Progress. Each tab owns its own header with the
-/// profile icon, so Profile opens from either.
+/// Signed-in root: Week, Recovery, and Progress. Each tab owns its own
+/// header with the profile icon, so Profile opens from any of them.
 struct MainTabView: View {
     init() {
         let appearance = UITabBarAppearance()
@@ -37,14 +37,30 @@ struct MainTabView: View {
         UITabBar.appearance().scrollEdgeAppearance = appearance
     }
 
+    private enum Tab { case week, recovery, progress }
+
+    @State private var tab: Tab = .week
+    @State private var router = AppRouter.shared
+
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             WeekView()
                 .tabItem { Label("Week", systemImage: "calendar") }
+                .tag(Tab.week)
+
+            // Middle, next to planning, so recovery informs the week.
+            RecoveryView()
+                .tabItem { Label("Recovery", systemImage: "figure.arms.open") }
+                .tag(Tab.recovery)
 
             ProgressScreen()
                 .tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }
+                .tag(Tab.progress)
         }
         .tint(SYN.cyan)
+        // A tapped reminder lands on Week, which opens the Log sheet.
+        .onChange(of: router.pendingLogFromReminder) { _, pending in
+            if pending { tab = .week }
+        }
     }
 }

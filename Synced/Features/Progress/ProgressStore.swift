@@ -13,6 +13,15 @@ struct LoggedSession: Identifiable, Equatable {
     let exercises: [LiftExercise]
 }
 
+extension String {
+    /// Canonical key for matching exercise names: trimmed and lowercased, so
+    /// "Curls", "CURLS", and "curls " are one exercise. Stored names are
+    /// never rewritten; this only affects grouping, matching, and suggestions.
+    var exerciseKey: String {
+        trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
 /// An exercise on a lift session, stored in sessions.lift_exercises
 /// as `[{"name": "Bench press", "muscle_group": "chest",
 /// "sets": [{"weight_lbs": 185, "reps": 5}]}]`. muscle_group is optional;
@@ -75,6 +84,25 @@ final class ProgressStore {
     private(set) var sessions: [LoggedSession] = []
     private(set) var loadState: LoadState = .loading
 
+    /// The last `limit` sessions that logged this exercise with at least one
+    /// valid set, oldest to newest, each with its heaviest set. Matches names
+    /// the same way the trend grouping does. Reads the already-fetched
+    /// sessions only; no network call.
+    func recentTopSets(for exerciseName: String, limit: Int = 7) -> [SessionTopSet] {
+        let key = exerciseName.exerciseKey
+        var recent: [SessionTopSet] = []
+        // Newest first by date, not by fetch order.
+        for session in sessions.sorted(by: { $0.date > $1.date }) where session.type == .lift {
+            let tops = session.exercises
+                .filter { $0.name.exerciseKey == key }
+                .compactMap { $0.topSet?.weightLbs }
+            guard let top = tops.max() else { continue }
+            recent.append(SessionTopSet(id: session.id, date: session.date, topWeightLbs: top))
+            if recent.count == limit { break }
+        }
+        return recent.reversed()
+    }
+
     private static let log = Logger(subsystem: "page.synced.app", category: "ProgressStore")
 
     @MainActor
@@ -87,6 +115,7 @@ final class ProgressStore {
                 .eq("user_id", value: userID.uuidString)
                 .eq("is_planned", value: false)
                 .order("scheduled_date", ascending: false)
+                .order("created_at", ascending: false)
                 .execute()
                 .value
             sessions = rows.compactMap(\.session)
@@ -156,7 +185,7 @@ struct GradePoint: Identifiable {
 
 struct ExercisePoint: Identifiable {
     let date: Date
-    /// Heaviest set that session; drives the sparkline and headline set.
+    /// Heaviest set that session; drives the headline set.
     let set: LiftSet
     /// Final set that session; drives the session-over-session comparison.
     let lastSet: LiftSet
@@ -194,7 +223,7 @@ struct ExerciseTrend: Identifiable {
     let name: String
     /// Oldest first.
     let points: [ExercisePoint]
-    var id: String { name.lowercased() }
+    var id: String { name.exerciseKey }
     var latest: ExercisePoint { points[points.count - 1] }
     var first: ExercisePoint { points[0] }
     var previous: ExercisePoint? { points.count >= 2 ? points[points.count - 2] : nil }
@@ -211,15 +240,14 @@ struct ExerciseTrend: Identifiable {
     /// Latest session came in lighter or for fewer reps, with nothing better.
     var isDowntrend: Bool { sessionDelta?.tone == .down }
     var isUptrend: Bool { sessionDelta?.tone == .up }
+}
 
-    /// Sparkline fits tightly around the data, never from zero.
-    var weightDomain: ClosedRange<Double> {
-        let weights = points.map(\.set.weightLbs)
-        let low = weights.min() ?? 0
-        let high = weights.max() ?? 0
-        let pad = max((high - low) * 0.15, 2.5)
-        return max(0, low - pad)...(high + pad)
-    }
+/// One session's heaviest set for an exercise, for the mini bar chart.
+struct SessionTopSet: Identifiable {
+    /// Session id.
+    let id: UUID
+    let date: Date
+    let topWeightLbs: Double
 }
 
 /// Everything the Progress screen shows, derived from one fetch for a window.
@@ -234,7 +262,8 @@ struct ProgressSummary {
     let comparison: String?
     /// Oldest first, one point per day with climbing. Feeds the headline.
     let gradePoints: [GradePoint]
-    /// Lift cards need this many sessions before drawing a sparkline.
+    /// Lift cards show the latest top set, rather than a before and after
+    /// line, from this many sessions on.
     static let minChartPoints = 3
     /// Most recent point sits below an earlier peak.
     let climbDowntrend: Bool
@@ -327,14 +356,22 @@ struct ProgressSummary {
         let lifts = inWindow.filter { $0.type == .lift }
         hasLifts = !lifts.isEmpty
 
+        // Display casing is the first time the name was ever logged, across
+        // all time, not just this window. Sessions arrive newest first (by
+        // scheduled_date, then created_at), so walk them in reverse.
+        var displayName: [String: String] = [:]
+        for session in sessions.reversed() where session.type == .lift {
+            for exercise in session.exercises where displayName[exercise.name.exerciseKey] == nil {
+                displayName[exercise.name.exerciseKey] = exercise.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
         var grouped: [String: (name: String, points: [ExercisePoint])] = [:]
-        // Sessions arrive newest first, so the first name seen per key is the
-        // most recent spelling.
-        for session in lifts.sorted(by: { $0.date > $1.date }) {
+        for session in lifts {
             for exercise in session.exercises {
-                let key = exercise.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let key = exercise.name.exerciseKey
                 guard !key.isEmpty, let set = exercise.topSet, let last = exercise.sets.last else { continue }
-                var entry = grouped[key] ?? (name: exercise.name.trimmingCharacters(in: .whitespacesAndNewlines), points: [])
+                var entry = grouped[key] ?? (name: displayName[key] ?? exercise.name, points: [])
                 let point = ExercisePoint(date: session.date, set: set, lastSet: last)
                 // One point per day: keep the session with the heavier top set.
                 if let i = entry.points.firstIndex(where: { cal.isDate($0.date, inSameDayAs: session.date) }) {

@@ -10,12 +10,28 @@ enum SessionType: String, CaseIterable, Identifiable {
 }
 
 /// Lift focus. A lift can have several, stored in muscle_groups in this
-/// declaration order, which is also the picker's grid order.
+/// declaration order, which is also the picker's grid order. The groups
+/// match regions on the Recovery muscle map. New rows only ever store these
+/// six values.
 enum MuscleGroup: String, CaseIterable, Identifiable {
-    case chest, back, shoulders, arms, legs
-    case fullBody = "full_body"
+    case chest, back, shoulders, arms, legs, core
 
     var id: String { rawValue }
+
+    /// Reads stored muscle_groups, including values no longer offered:
+    /// "full_body" counts as every group, and "biceps", "triceps", and
+    /// "forearms" count as arms. Old rows stay as they are in the database.
+    static func expand(_ stored: [String]) -> Set<MuscleGroup> {
+        var out = Set<MuscleGroup>()
+        for value in stored {
+            switch value {
+            case "full_body":                     out.formUnion(MuscleGroup.allCases)
+            case "biceps", "triceps", "forearms": out.insert(.arms)
+            default:                              if let group = MuscleGroup(rawValue: value) { out.insert(group) }
+            }
+        }
+        return out
+    }
 }
 
 /// One session is one row in the sessions table. `isPlanned` is true until the
@@ -52,7 +68,7 @@ struct ExerciseSuggestion: Identifiable, Equatable {
     let muscle: MuscleGroup?
     /// Sets from the most recent time it was logged, used to pre-fill.
     let sets: [LiftSet]
-    var id: String { name.lowercased() }
+    var id: String { name.exerciseKey }
 }
 
 /// Suggestion chips the user removed. Stored on this device per account;
@@ -70,14 +86,14 @@ enum HiddenExerciseSuggestions {
     static func hide(_ name: String) {
         guard let key else { return }
         var names = load()
-        names.insert(name.lowercased())
+        names.insert(name.exerciseKey)
         UserDefaults.standard.set(Array(names), forKey: key)
     }
 
     static func unhide(_ names: [String]) {
         guard let key, !names.isEmpty else { return }
         let current = load()
-        let remaining = current.subtracting(names.map { $0.lowercased() })
+        let remaining = current.subtracting(names.map(\.exerciseKey))
         if remaining != current {
             UserDefaults.standard.set(Array(remaining), forKey: key)
         }
@@ -187,6 +203,7 @@ final class WeekStore {
         if let session = Self.session(from: row) {
             sessions.append(session)
         }
+        Task { await ReminderScheduler.reschedule() }
     }
 
     /// Inserts a fresh log, or updates an existing planned or logged row.
@@ -224,6 +241,8 @@ final class WeekStore {
         } else {
             sessions.append(session)
         }
+        // A log can clear today's reminder; a changed plan changes its wording.
+        Task { await ReminderScheduler.reschedule() }
     }
 
     /// Hard deletes the session's row and drops it locally. RLS already
@@ -244,6 +263,7 @@ final class WeekStore {
             .value
         guard !deleted.isEmpty else { throw DeleteError.notDeleted }
         sessions.removeAll { $0.id == session.id }
+        Task { await ReminderScheduler.reschedule() }
     }
 
     enum DeleteError: LocalizedError {
@@ -275,12 +295,13 @@ final class WeekStore {
                 .execute()
                 .value
             return rows.flatMap { row in
-                let sessionMuscles = Set((row.muscle_groups ?? []).compactMap(MuscleGroup.init(rawValue:)))
+                let sessionMuscles = MuscleGroup.expand(row.muscle_groups ?? [])
                 return (row.lift_exercises?.items ?? []).map { exercise in
-                    let own = exercise.muscleGroup.flatMap(MuscleGroup.init(rawValue:))
+                    // Legacy exercise tags are read the same way as session groups.
+                    let own = exercise.muscleGroup.map { MuscleGroup.expand([$0]) } ?? []
                     return ExerciseUse(
                         name: exercise.name,
-                        muscles: own.map { [$0] } ?? sessionMuscles,
+                        muscles: own.isEmpty ? sessionMuscles : own,
                         sets: exercise.sets
                     )
                 }
@@ -302,7 +323,7 @@ final class WeekStore {
         // Climbs logged before multi-grade only have climb_grade_v.
         let sent = row.climb_grades_sent ?? []
         let grades = sent.isEmpty ? (row.climb_grade_v.map { [$0] } ?? []) : sent
-        let saved = Set((row.muscle_groups ?? []).compactMap(MuscleGroup.init(rawValue:)))
+        let saved = MuscleGroup.expand(row.muscle_groups ?? [])
         return Session(
             id: row.id,
             type: type,
@@ -334,7 +355,7 @@ private struct SessionRow: Decodable {
 
 /// Decodes lift_exercises one element at a time so a malformed entry is
 /// skipped instead of failing the whole row.
-private struct LiftExerciseList: Decodable {
+struct LiftExerciseList: Decodable {
     let items: [LiftExercise]
 
     private struct Skip: Decodable {}

@@ -13,8 +13,8 @@ Synced is an iOS training planner for climbers who also do supporting strength w
 ## Stack
 
 - SwiftUI with `@Observable` state
-- Supabase (auth, plus Postgres with Row Level Security) as the only runtime dependency
-- Swift Charts (Apple, no third-party charting)
+- Supabase (auth, plus Postgres with Row Level Security)
+- MuscleMap for the Recovery anatomy view; small charts are drawn in SwiftUI
 - XcodeGen for project generation: `project.yml` is the source of truth, `Synced.xcodeproj` is generated and gitignored
 - Geist and Geist Mono bundled fonts, accessed only through `Font.synDisplay`, `synText`, and `synMono`
 - No CocoaPods, no other SPM packages

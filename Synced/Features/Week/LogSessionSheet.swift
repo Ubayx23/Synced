@@ -43,23 +43,33 @@ struct LogSessionSheet: View {
         }
     }
 
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
     private var selectedMuscles: [MuscleGroup] {
         MuscleGroup.allCases.filter(muscles.contains)
     }
 
     /// Past exercises whose muscle group is currently selected, newest first,
-    /// one per name ignoring case, minus chips the user removed. Each carries
-    /// the sets from its most recent log. Updates live with the selection.
+    /// one per name ignoring case and surrounding spaces, minus chips the user
+    /// removed. Each shows the casing from the first time it was ever logged,
+    /// so a tapped chip matches the history, and carries the sets from its
+    /// most recent log. Updates live with the selection.
     private var exerciseSuggestions: [ExerciseSuggestion] {
         guard !muscles.isEmpty else { return [] }
+        // History is newest first, so the earliest spelling is the last one seen.
+        var firstSpelling: [String: String] = [:]
+        for use in exerciseHistory.reversed() where firstSpelling[use.name.exerciseKey] == nil {
+            firstSpelling[use.name.exerciseKey] = use.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         var seen = Set<String>()
         return exerciseHistory.compactMap { use in
             let matched = MuscleGroup.allCases.filter { muscles.contains($0) && use.muscles.contains($0) }
             guard let muscle = matched.first else { return nil }
-            let name = use.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            let key = name.lowercased()
-            guard !name.isEmpty, !hiddenSuggestions.contains(key), seen.insert(key).inserted else { return nil }
-            return ExerciseSuggestion(name: name, muscle: muscle, sets: use.sets)
+            let key = use.name.exerciseKey
+            guard !key.isEmpty, !hiddenSuggestions.contains(key), seen.insert(key).inserted else { return nil }
+            return ExerciseSuggestion(name: firstSpelling[key] ?? use.name, muscle: muscle, sets: use.sets)
         }
     }
 
@@ -125,9 +135,26 @@ struct LogSessionSheet: View {
                 .padding(.top, Spacing.s)
                 .padding(.bottom, Spacing.lg)
                 .animation(.easeOut(duration: 0.22), value: type)
+                // Tapping empty space between sections dismisses the keyboard.
+                // It sits behind the content, so fields, buttons, and scrolling
+                // keep their own touches.
+                .background(
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture(perform: dismissKeyboard)
+                )
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
+            // Number pads have no Return key; Done covers every field here.
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done", action: dismissKeyboard)
+                        .font(.synText(16, weight: .semibold))
+                        .foregroundStyle(SYN.cyan)
+                }
+            }
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
@@ -206,25 +233,28 @@ struct LogSessionSheet: View {
                 Button {
                     type = option
                 } label: {
+                    // Same treatment as Week pills when selected: climb filled
+                    // cyan, lift outlined cyan, rest outlined muted.
+                    let filled = selected && option.isFilled
                     VStack(spacing: Spacing.s) {
                         Image(systemName: option.symbol)
                             .font(.system(size: 20, weight: .semibold))
                             .frame(height: 24)
+                            .foregroundStyle(filled ? SYN.bg : option.color.opacity(selected ? 1 : 0.6))
                         Text(option.title)
                             .font(.synText(15, weight: .semibold))
+                            .foregroundStyle(filled ? SYN.bg : selected ? option.color : SYN.textFaint)
                     }
-                    .foregroundStyle(selected ? option.color : SYN.textDim)
                     .frame(maxWidth: .infinity)
                     .frame(height: 80)
                     .background(
                         RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                            .fill(selected ? option.color.opacity(0.1) : SYN.surface)
+                            .fill(filled ? option.color : SYN.surface)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                            .stroke(selected ? option.color.opacity(0.8) : SYN.border, lineWidth: 1)
+                            .stroke(selected ? option.color : SYN.border, lineWidth: 1)
                     )
-                    .shadow(color: selected ? option.color.opacity(0.3) : .clear, radius: 14)
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selected ? .isSelected : [])
@@ -276,7 +306,6 @@ struct LogSessionSheet: View {
                     ForEach(0...17, id: \.self) { value in
                         OptionPill(
                             title: "V\(value)",
-                            color: SessionType.climb.color,
                             selected: grades.contains(value),
                             mono: true
                         ) {
@@ -313,7 +342,6 @@ struct LogSessionSheet: View {
             ForEach(MuscleGroup.allCases) { option in
                 OptionPill(
                     title: option.title,
-                    color: SessionType.lift.color,
                     selected: muscles.contains(option),
                     fillsWidth: true
                 ) {
@@ -331,17 +359,17 @@ struct LogSessionSheet: View {
         HStack(spacing: 0) {
             ForEach(1...5, id: \.self) { value in
                 let selected = rating == value
-                let color = Session.ratingColor(value)
                 Button {
                     rating = selected ? nil : value
                 } label: {
+                    // Neutral selection: raised surface, white outline and
+                    // number. Cyan stays for the type card and actions.
                     Text("\(value)")
                         .font(.synMono(17, weight: .semibold))
-                        .foregroundStyle(selected ? SYN.bg : SYN.textDim)
+                        .foregroundStyle(selected ? SYN.text : SYN.textDim)
                         .frame(width: 52, height: 52)
-                        .background(Circle().fill(selected ? color : SYN.surface))
-                        .overlay(Circle().stroke(selected ? color : SYN.border, lineWidth: 1))
-                        .shadow(color: selected ? color.opacity(0.45) : .clear, radius: 12)
+                        .background(Circle().fill(selected ? SYN.surfaceHi : SYN.surface))
+                        .overlay(Circle().stroke(selected ? SYN.text.opacity(0.9) : SYN.border, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Rating \(value) of 5")
@@ -350,7 +378,7 @@ struct LogSessionSheet: View {
                 if value < 5 { Spacer(minLength: 0) }
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: rating)
+        .animation(.easeOut(duration: 0.15), value: rating)
     }
 
     private var notesField: some View {
@@ -483,11 +511,14 @@ private struct SendChip: View {
                     .font(.system(size: 14, weight: .semibold))
                     .opacity(0.8)
             }
-            .foregroundStyle(SYN.bg)
+            // Neutral like the other selections; cyan stays with the type
+            // card and actions.
+            .foregroundStyle(SYN.text)
             .padding(.leading, Spacing.m)
             .padding(.trailing, Spacing.s)
             .frame(height: 36)
-            .background(Capsule().fill(SessionType.climb.color))
+            .background(Capsule().fill(SYN.surfaceHi))
+            .overlay(Capsule().stroke(SYN.text.opacity(0.9), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("V\(grade), \(count) \(count == 1 ? "send" : "sends")")
@@ -497,10 +528,11 @@ private struct SendChip: View {
 
 // MARK: - Option pill
 
-/// Single-select pill used for grades and muscle groups.
+/// Pill used for grades and muscle groups. Selection is neutral (raised
+/// surface, white outline and label) so cyan stays with the type card and
+/// the actions.
 private struct OptionPill: View {
     let title: String
-    let color: Color
     let selected: Bool
     var mono: Bool = false
     var fillsWidth: Bool = false
@@ -510,16 +542,16 @@ private struct OptionPill: View {
         Button(action: action) {
             Text(title)
                 .font(mono ? .synMono(15, weight: .semibold) : .synText(15, weight: .semibold))
-                .foregroundStyle(selected ? color : SYN.textDim)
+                .foregroundStyle(selected ? SYN.text : SYN.textDim)
                 .padding(.horizontal, Spacing.md)
                 .frame(maxWidth: fillsWidth ? .infinity : nil)
                 .frame(height: 44)
-                .background(Capsule().fill(selected ? color.opacity(0.12) : SYN.surface))
-                .overlay(Capsule().stroke(selected ? color.opacity(0.8) : SYN.border, lineWidth: 1))
-                .shadow(color: selected ? color.opacity(0.3) : .clear, radius: 10)
+                // Border in both states so the tap target always reads.
+                .background(Capsule().fill(selected ? SYN.surfaceHi : SYN.surface))
+                .overlay(Capsule().stroke(selected ? SYN.text.opacity(0.9) : SYN.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .animation(.easeOut(duration: 0.18), value: selected)
+        .animation(.easeOut(duration: 0.15), value: selected)
     }
 }

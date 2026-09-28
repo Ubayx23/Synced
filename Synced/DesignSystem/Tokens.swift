@@ -32,6 +32,18 @@ enum SYN {
     static let amber       = Color(hex: 0xF59E0B)
     static let green       = Color(hex: 0x22C55E)
     static let bronze      = Color(hex: 0xCD7F32)
+
+    // Recovery anatomy: one hue, brightness carries state. Cyan means ready,
+    // dimmer cyan means recovering, gray means just worked.
+    /// 5+ days since trained, or not trained in the window. Softened from
+    /// full cyan so an all-ready body reads calm, still drawn with a glow.
+    static let muscleReady      = cyan.opacity(0.85)
+    /// Trained 2 to 4 days ago; clearly between ready and worked.
+    static let muscleRecovering = cyan.opacity(0.35)
+    /// Trained today or yesterday; gray.
+    static let muscleWorked     = textFaint.opacity(0.55)
+    /// Non-muscle body parts (head, hands, knees, feet) and the silhouette.
+    static let muscleBase     = surface
 }
 
 enum Spacing {
