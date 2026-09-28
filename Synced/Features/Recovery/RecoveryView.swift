@@ -1,14 +1,16 @@
 import MuscleMap
 import SwiftUI
 
-/// Recovery tab: a front anatomy view where ready muscles glow cyan and
-/// recently worked ones turn gray. Read-only.
+/// Recovery tab: a front or back anatomy view where ready muscles glow cyan
+/// and recently worked ones turn gray. Read-only.
 struct RecoveryView: View {
     @State private var store = RecoveryStore()
     @State private var showingProfile = false
     @Environment(\.scenePhase) private var scenePhase
     /// Chosen at sign up; picks the male or female body model.
     @AppStorage(BodyModel.storageKey) private var bodyModel = BodyModel.male.rawValue
+    /// View state only: every launch opens on Front.
+    @State private var side: BodySide = .front
 
     // Tap-to-label. MuscleMap reports which muscle was tapped but not where;
     // a separate tap gesture records where. Both fire on the same tap and are
@@ -25,15 +27,18 @@ struct RecoveryView: View {
         BodyGender(rawValue: bodyModel) ?? .male
     }
 
-    /// App groups to MuscleMap muscles on the front view. Back is only
-    /// visible from the front as the trapezius.
+    /// App groups to MuscleMap muscles, covering both sides; a muscle not
+    /// drawn on the current side is simply skipped. MuscleMap's back view
+    /// has no separate lats, rhomboids, or rear delts: lats and rhomboids sit
+    /// inside upperBack, rear delts inside deltoids.
     private static let muscles: [MuscleGroup: [Muscle]] = [
-        .chest:     [.chest],
-        .shoulders: [.deltoids],
-        .back:      [.trapezius],
-        .arms:      [.biceps, .triceps, .forearm],
-        .core:      [.abs, .obliques],
-        .legs:      [.quadriceps, .adductors, .calves, .tibialis],
+        .chest:     [.chest],                                   // front
+        .shoulders: [.deltoids],                                // both
+        .back:      [.trapezius, .upperBack],                   // traps both, upper back on back
+        .arms:      [.biceps, .triceps, .forearm],              // biceps front; triceps, forearm both
+        .core:      [.abs, .obliques, .lowerBack],              // abs, obliques front; lower back on back
+        .legs:      [.quadriceps, .adductors, .calves, .tibialis,
+                     .hamstring, .gluteal],                     // quads, shins front; hams, glutes back
     ]
 
     var body: some View {
@@ -47,10 +52,18 @@ struct RecoveryView: View {
 
                 stats
 
+                sideToggle
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Spacing.md)
+                    .padding(.bottom, Spacing.md)
+
                 // Takes all remaining height; MuscleMap scales the body to fit.
+                // Crossfades when the side changes.
                 anatomy
+                    .id(side)
+                    .transition(.opacity)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.vertical, Spacing.s)
+                    .padding(.bottom, Spacing.s)
 
                 // Only before the first logged session in the window: frames
                 // the all-ready body as a starting point.
@@ -155,9 +168,41 @@ struct RecoveryView: View {
         }
     }
 
+    // MARK: - Front / Back
+
+    /// Small segmented pill. Stats and legend are side-agnostic, so only the
+    /// anatomy changes.
+    private var sideToggle: some View {
+        HStack(spacing: 0) {
+            ForEach([BodySide.front, .back], id: \.self) { option in
+                let selected = side == option
+                Button {
+                    guard side != option else { return }
+                    dismissLabel()
+                    withAnimation(.easeInOut(duration: 0.25)) { side = option }
+                } label: {
+                    Text(option == .front ? "Front" : "Back")
+                        .font(.synText(12, weight: .semibold))
+                        .tracking(2.0)
+                        .textCase(.uppercase)
+                        .foregroundStyle(selected ? SYN.text : SYN.textDim)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 32)
+                        .background(Capsule().fill(selected ? SYN.cyan.opacity(0.15) : .clear))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .frame(width: 140)
+        .background(Capsule().fill(SYN.surface))
+        .overlay(Capsule().stroke(SYN.border, lineWidth: 0.5))
+    }
+
     // MARK: - Anatomy
 
-    /// Two stacked copies of the same front body. The base shows every
+    /// Two stacked copies of the same body side. The base shows every
     /// group's state; the top copy draws only ready groups with a cyan
     /// shadow, because MuscleMap's shadow applies to all highlighted muscles
     /// at once and the glow belongs on ready ones only.
@@ -166,12 +211,12 @@ struct RecoveryView: View {
             // Ready groups are left to the glow layer so their color is drawn
             // once; drawing them on both layers doubles the opacity and undoes
             // the softened ready tone.
-            highlighted(BodyView(gender: gender, side: .front, style: baseStyle)) { $0 != .ready }
+            highlighted(BodyView(gender: gender, side: side, style: baseStyle)) { $0 != .ready }
                 .onMuscleSelected { muscle, _ in
                     pendingMuscle = muscle
                     scheduleResolve()
                 }
-            highlighted(BodyView(gender: gender, side: .front, style: glowStyle)) { $0 == .ready }
+            highlighted(BodyView(gender: gender, side: side, style: glowStyle)) { $0 == .ready }
                 .allowsHitTesting(false)
         }
         // Records where the tap landed; runs alongside MuscleMap's own tap.
