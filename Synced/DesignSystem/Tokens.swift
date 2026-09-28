@@ -32,6 +32,14 @@ enum SYN {
     static let amber       = Color(hex: 0xF59E0B)
     static let green       = Color(hex: 0x22C55E)
     static let bronze      = Color(hex: 0xCD7F32)
+
+    // Recovery anatomy: brightness carries state, dark means rested.
+    /// Recovered or untrained in the window; near-invisible on the dark body.
+    static let muscleFresh    = surface.opacity(0.6)
+    /// Trained 3 to 4 days ago; visible but muted.
+    static let muscleModerate = cyan.opacity(0.35)
+    /// Trained in the last 2 days; full accent, drawn with a soft glow.
+    static let muscleFatigued = cyan
 }
 
 enum Spacing {

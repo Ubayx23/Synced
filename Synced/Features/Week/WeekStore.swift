@@ -10,12 +10,27 @@ enum SessionType: String, CaseIterable, Identifiable {
 }
 
 /// Lift focus. A lift can have several, stored in muscle_groups in this
-/// declaration order, which is also the picker's grid order.
+/// declaration order, which is also the picker's grid order. New rows only
+/// ever store these eight values.
 enum MuscleGroup: String, CaseIterable, Identifiable {
-    case chest, back, shoulders, arms, legs
-    case fullBody = "full_body"
+    case chest, back, shoulders, biceps, triceps, forearms, legs, core
 
     var id: String { rawValue }
+
+    /// Reads stored muscle_groups, including values retired from the picker:
+    /// "arms" counts as biceps, triceps, and forearms, and "full_body" as
+    /// every group. Old rows stay as they are in the database.
+    static func expand(_ stored: [String]) -> Set<MuscleGroup> {
+        var out = Set<MuscleGroup>()
+        for value in stored {
+            switch value {
+            case "arms":      out.formUnion([.biceps, .triceps, .forearms])
+            case "full_body": out.formUnion(MuscleGroup.allCases)
+            default:          if let group = MuscleGroup(rawValue: value) { out.insert(group) }
+            }
+        }
+        return out
+    }
 }
 
 /// One session is one row in the sessions table. `isPlanned` is true until the
@@ -279,12 +294,13 @@ final class WeekStore {
                 .execute()
                 .value
             return rows.flatMap { row in
-                let sessionMuscles = Set((row.muscle_groups ?? []).compactMap(MuscleGroup.init(rawValue:)))
+                let sessionMuscles = MuscleGroup.expand(row.muscle_groups ?? [])
                 return (row.lift_exercises?.items ?? []).map { exercise in
-                    let own = exercise.muscleGroup.flatMap(MuscleGroup.init(rawValue:))
+                    // An exercise tagged "arms" suggests under all three arm groups.
+                    let own = exercise.muscleGroup.map { MuscleGroup.expand([$0]) } ?? []
                     return ExerciseUse(
                         name: exercise.name,
-                        muscles: own.map { [$0] } ?? sessionMuscles,
+                        muscles: own.isEmpty ? sessionMuscles : own,
                         sets: exercise.sets
                     )
                 }
@@ -306,7 +322,7 @@ final class WeekStore {
         // Climbs logged before multi-grade only have climb_grade_v.
         let sent = row.climb_grades_sent ?? []
         let grades = sent.isEmpty ? (row.climb_grade_v.map { [$0] } ?? []) : sent
-        let saved = Set((row.muscle_groups ?? []).compactMap(MuscleGroup.init(rawValue:)))
+        let saved = MuscleGroup.expand(row.muscle_groups ?? [])
         return Session(
             id: row.id,
             type: type,
