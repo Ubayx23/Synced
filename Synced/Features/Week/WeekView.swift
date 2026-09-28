@@ -17,6 +17,7 @@ struct WeekView: View {
     /// overnight shows the new day without a relaunch.
     @State private var today = Date()
     @Environment(\.scenePhase) private var scenePhase
+    @State private var router = AppRouter.shared
 
     private var days: [Date] {
         let anchor = WeekStore.calendar.date(byAdding: .weekOfYear, value: weekOffset, to: today) ?? today
@@ -68,6 +69,13 @@ struct WeekView: View {
         // Reloads when the visible week changes, from the chevrons or from
         // the calendar rolling into a new week while the app was away.
         .task(id: days.first) { await store.load(week: days) }
+        // A tapped reminder, whether the app was running or cold launched.
+        .onChange(of: router.pendingLogFromReminder) { _, pending in
+            if pending { Task { await openLogFromReminder() } }
+        }
+        .onAppear {
+            if router.pendingLogFromReminder { Task { await openLogFromReminder() } }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { today = Date() }
         }
@@ -103,6 +111,22 @@ struct WeekView: View {
         ) {
             Button("OK", role: .cancel) {}
         }
+    }
+
+    /// Opens the Log sheet for today: pre-filled with today's first planned
+    /// session if there is one, otherwise blank. Jumps back to the current
+    /// week and closes any other sheet first.
+    @MainActor
+    private func openLogFromReminder() async {
+        router.pendingLogFromReminder = false
+        planTarget = nil
+        showingProfile = false
+        logTarget = nil
+        today = Date()
+        weekOffset = 0
+        await store.load(week: WeekStore.weekDays(containing: today))
+        let planned = store.sessions(on: today).first { $0.isPlanned }
+        logTarget = LogTarget(session: planned)
     }
 
     private func delete(_ session: Session) {

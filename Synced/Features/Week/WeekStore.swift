@@ -187,6 +187,7 @@ final class WeekStore {
         if let session = Self.session(from: row) {
             sessions.append(session)
         }
+        Task { await ReminderScheduler.reschedule() }
     }
 
     /// Inserts a fresh log, or updates an existing planned or logged row.
@@ -224,6 +225,8 @@ final class WeekStore {
         } else {
             sessions.append(session)
         }
+        // A log can clear today's reminder; a changed plan changes its wording.
+        Task { await ReminderScheduler.reschedule() }
     }
 
     /// Hard deletes the session's row and drops it locally. RLS already
@@ -244,6 +247,7 @@ final class WeekStore {
             .value
         guard !deleted.isEmpty else { throw DeleteError.notDeleted }
         sessions.removeAll { $0.id == session.id }
+        Task { await ReminderScheduler.reschedule() }
     }
 
     enum DeleteError: LocalizedError {
