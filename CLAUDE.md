@@ -112,10 +112,9 @@ Tables:
 - `climb_grades_sent INTEGER[]`: one entry per send, e.g. [2, 2, 3]
 - `climb_grade_v INTEGER`: mirrors max(climb_grades_sent), 0 to 17
 - `muscle_groups TEXT[]`: lift focus. Values written: chest, back,
-  shoulders, biceps, triceps, forearms, legs, core. Legacy rows may still
-  hold 'arms' or 'full_body'; `MuscleGroup.expand` reads 'arms' as biceps +
-  triceps + forearms and 'full_body' as every group. Rows are never
-  rewritten.
+  shoulders, arms, legs, core (matching regions on the Recovery map).
+  `MuscleGroup.expand` reads legacy values: 'full_body' as every group, and
+  'biceps', 'triceps', 'forearms' as arms. Rows are never rewritten.
 - `rating INTEGER` (1 to 5, optional), `notes TEXT` (optional)
 - `lift_exercises JSONB`: written by the Log sheet, read by Progress and
   by the exercise suggestions. Shape:
@@ -141,8 +140,10 @@ Main app (Features/):
   LogSessionSheet, ExercisesEditor.
 - Progress/: ProgressScreen and ProgressStore (one fetch, all aggregation
   client side).
-- Recovery/: RecoveryView (MuscleMap front anatomy) and RecoveryStore (days
-  since each group was trained, last 14 days).
+- Recovery/: RecoveryView (MuscleMap front anatomy; ready muscles glow cyan,
+  worked ones turn gray), RecoveryStore (days since each group was trained,
+  last 14 days), and BodyModel (male or female, picked at sign up and stored
+  on the device).
 - Reminders/: ReminderScheduler (local daily reminder, no APNs).
 - Profile/: ProfileSheet (daily reminder toggle and time, sign out).
 - Auth/: WelcomeView, SignUpView, SignInView.

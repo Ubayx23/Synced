@@ -1,12 +1,18 @@
 import MuscleMap
 import SwiftUI
 
-/// Recovery tab: a front anatomy view where recently trained muscles glow
-/// cyan and rested ones sink into the dark body. Read-only.
+/// Recovery tab: a front anatomy view where ready muscles glow cyan and
+/// recently worked ones turn gray. Read-only.
 struct RecoveryView: View {
     @State private var store = RecoveryStore()
     @State private var showingProfile = false
     @Environment(\.scenePhase) private var scenePhase
+    /// Chosen at sign up; picks the male or female body model.
+    @AppStorage(BodyModel.storageKey) private var bodyModel = BodyModel.male.rawValue
+
+    private var gender: BodyGender {
+        BodyGender(rawValue: bodyModel) ?? .male
+    }
 
     /// App groups to MuscleMap muscles on the front view. Back is only
     /// visible from the front as the trapezius.
@@ -14,9 +20,7 @@ struct RecoveryView: View {
         .chest:     [.chest],
         .shoulders: [.deltoids],
         .back:      [.trapezius],
-        .biceps:    [.biceps],
-        .triceps:   [.triceps],
-        .forearms:  [.forearm],
+        .arms:      [.biceps, .triceps, .forearm],
         .core:      [.abs, .obliques],
         .legs:      [.quadriceps, .adductors, .calves, .tibialis],
     ]
@@ -39,13 +43,16 @@ struct RecoveryView: View {
                     stats
                 }
 
+                // Takes all remaining height; MuscleMap scales the body to fit.
                 anatomy
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.vertical, Spacing.lg)
+                    .padding(.vertical, Spacing.s)
 
+                // Not a scroll view, so the tab bar's safe area already
+                // clears it; no extra tab bar clearance needed.
                 legend
                     .frame(maxWidth: .infinity)
-                    .padding(.bottom, Spacing.tabBarClearance)
+                    .padding(.bottom, Spacing.md)
             }
             .padding(.horizontal, Spacing.pageH)
         }
@@ -114,16 +121,15 @@ struct RecoveryView: View {
     // MARK: - Anatomy
 
     /// Two stacked copies of the same front body. The base shows every
-    /// group's state; the top copy draws only fatigued groups with a cyan
+    /// group's state; the top copy draws only ready groups with a cyan
     /// shadow, because MuscleMap's shadow applies to all highlighted muscles
-    /// at once and the glow belongs on fatigued ones only.
+    /// at once and the glow belongs on ready ones only.
     private var anatomy: some View {
         ZStack {
-            highlighted(BodyView(gender: .male, side: .front, style: baseStyle)) { $0 != .fresh }
-            highlighted(BodyView(gender: .male, side: .front, style: glowStyle)) { $0 == .fatigued }
+            highlighted(BodyView(gender: gender, side: .front, style: baseStyle)) { _ in true }
+            highlighted(BodyView(gender: gender, side: .front, style: glowStyle)) { $0 == .fresh }
                 .allowsHitTesting(false)
         }
-        .aspectRatio(0.5, contentMode: .fit)
         .animation(.easeOut(duration: 0.3), value: store.daysSince)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)
@@ -139,10 +145,11 @@ struct RecoveryView: View {
         return view
     }
 
-    /// Rested body: dark fill with a faint outline so the silhouette reads.
+    /// Non-muscle parts stay dark with a faint outline so the silhouette
+    /// reads; every mapped group is colored by its state.
     private var baseStyle: BodyViewStyle {
         BodyViewStyle(
-            defaultFillColor: SYN.muscleFresh,
+            defaultFillColor: SYN.muscleBase,
             strokeColor: SYN.border,
             strokeWidth: 0.5,
             headColor: SYN.surface,
@@ -187,7 +194,7 @@ struct RecoveryView: View {
             Circle()
                 .fill(color)
                 .frame(width: 6, height: 6)
-                // The recovered dot is nearly the background color.
+                // Keeps the dimmer dots legible against the background.
                 .overlay(Circle().stroke(SYN.border, lineWidth: 0.5))
             EyebrowText(text: label)
                 .foregroundStyle(SYN.textFaint)

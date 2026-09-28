@@ -16,6 +16,8 @@ struct SignUpView: View {
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var currentNonce: String?
+    /// Body model for the Recovery map; stored on the device.
+    @AppStorage(BodyModel.storageKey) private var bodyModel = BodyModel.male.rawValue
 
     private var hasMinLength: Bool { password.count >= 8 }
     private var hasUppercase: Bool { password.contains(where: { $0.isUppercase }) }
@@ -127,6 +129,11 @@ struct SignUpView: View {
             requirements
                 .phaseFadeUp(phase: phase, delay: 0.38)
 
+            Spacer().frame(height: Spacing.lg)
+
+            bodyModelPicker
+                .phaseFadeUp(phase: phase, delay: 0.41)
+
             if let errorMessage {
                 Spacer().frame(height: Spacing.md)
                 Text(errorMessage)
@@ -160,6 +167,39 @@ struct SignUpView: View {
             requirementRow("One uppercase letter", met: hasUppercase)
             requirementRow("One lowercase letter", met: hasLowercase)
             requirementRow("One number", met: hasNumber)
+        }
+    }
+
+    /// Male or female body for the Recovery muscle map.
+    private var bodyModelPicker: some View {
+        VStack(alignment: .leading, spacing: Spacing.s) {
+            Text("Body")
+                .font(.synText(11, weight: .semibold))
+                .tracking(0.96)
+                .textCase(.uppercase)
+                .foregroundStyle(SYN.textFaint)
+
+            HStack(spacing: Spacing.s) {
+                ForEach(BodyModel.allCases) { option in
+                    let selected = bodyModel == option.rawValue
+                    Button { bodyModel = option.rawValue } label: {
+                        Text(option.title)
+                            .font(.synText(15, weight: .semibold))
+                            .foregroundStyle(selected ? SYN.cyan : SYN.textDim)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .background(Capsule().fill(selected ? SYN.cyan.opacity(0.12) : SYN.surface))
+                            .overlay(Capsule().stroke(selected ? SYN.cyan.opacity(0.8) : SYN.border, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+            .animation(.easeOut(duration: 0.18), value: bodyModel)
+
+            Text("Used for your recovery map.")
+                .font(.synText(12))
+                .foregroundStyle(SYN.textFaint)
         }
     }
 

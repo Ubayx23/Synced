@@ -10,23 +10,24 @@ enum SessionType: String, CaseIterable, Identifiable {
 }
 
 /// Lift focus. A lift can have several, stored in muscle_groups in this
-/// declaration order, which is also the picker's grid order. New rows only
-/// ever store these eight values.
+/// declaration order, which is also the picker's grid order. The groups
+/// match regions on the Recovery muscle map. New rows only ever store these
+/// six values.
 enum MuscleGroup: String, CaseIterable, Identifiable {
-    case chest, back, shoulders, biceps, triceps, forearms, legs, core
+    case chest, back, shoulders, arms, legs, core
 
     var id: String { rawValue }
 
-    /// Reads stored muscle_groups, including values retired from the picker:
-    /// "arms" counts as biceps, triceps, and forearms, and "full_body" as
-    /// every group. Old rows stay as they are in the database.
+    /// Reads stored muscle_groups, including values no longer offered:
+    /// "full_body" counts as every group, and "biceps", "triceps", and
+    /// "forearms" count as arms. Old rows stay as they are in the database.
     static func expand(_ stored: [String]) -> Set<MuscleGroup> {
         var out = Set<MuscleGroup>()
         for value in stored {
             switch value {
-            case "arms":      out.formUnion([.biceps, .triceps, .forearms])
-            case "full_body": out.formUnion(MuscleGroup.allCases)
-            default:          if let group = MuscleGroup(rawValue: value) { out.insert(group) }
+            case "full_body":                     out.formUnion(MuscleGroup.allCases)
+            case "biceps", "triceps", "forearms": out.insert(.arms)
+            default:                              if let group = MuscleGroup(rawValue: value) { out.insert(group) }
             }
         }
         return out
@@ -296,7 +297,7 @@ final class WeekStore {
             return rows.flatMap { row in
                 let sessionMuscles = MuscleGroup.expand(row.muscle_groups ?? [])
                 return (row.lift_exercises?.items ?? []).map { exercise in
-                    // An exercise tagged "arms" suggests under all three arm groups.
+                    // Legacy exercise tags are read the same way as session groups.
                     let own = exercise.muscleGroup.map { MuscleGroup.expand([$0]) } ?? []
                     return ExerciseUse(
                         name: exercise.name,

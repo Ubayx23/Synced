@@ -526,9 +526,7 @@ extension MuscleGroup {
         case .chest:     return "Chest"
         case .back:      return "Back"
         case .shoulders: return "Shoulders"
-        case .biceps:    return "Biceps"
-        case .triceps:   return "Triceps"
-        case .forearms:  return "Forearms"
+        case .arms:      return "Arms"
         case .legs:      return "Legs"
         case .core:      return "Core"
         }
