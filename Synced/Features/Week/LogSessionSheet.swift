@@ -96,63 +96,61 @@ struct LogSessionSheet: View {
                 .padding(.top, Spacing.lg)
                 .padding(.bottom, Spacing.md)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: Spacing.xl) {
-                    section("Type") { typePicker }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Spacing.xl) {
+                        section("Type") { typePicker }
 
-                    if type == .climb {
-                        section("Sends", trailing: sendsSummary) {
-                            VStack(alignment: .leading, spacing: Spacing.m) {
-                                sendsRow
-                                gradePicker
-                            }
-                        }
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-                    if type == .lift {
-                        section("Focus", trailing: "Pick one or more") { musclePicker }
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                        section("Exercises", optional: true) {
-                            ExercisesEditor(
-                                exercises: $exercises,
-                                selectedMuscles: selectedMuscles,
-                                suggestions: exerciseSuggestions,
-                                onHideSuggestion: { suggestion in
-                                    HiddenExerciseSuggestions.hide(suggestion.name)
-                                    hiddenSuggestions.insert(suggestion.id)
+                        if type == .climb {
+                            section("Sends", trailing: sendsSummary) {
+                                VStack(alignment: .leading, spacing: Spacing.m) {
+                                    sendsRow
+                                    gradePicker
                                 }
-                            )
+                            }
+                                .transition(.opacity.combined(with: .move(edge: .top)))
                         }
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        if type == .lift {
+                            section("Focus", trailing: "Pick one or more") { musclePicker }
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                            section("Exercises", optional: true) {
+                                ExercisesEditor(
+                                    exercises: $exercises,
+                                    selectedMuscles: selectedMuscles,
+                                    suggestions: exerciseSuggestions,
+                                    onHideSuggestion: { suggestion in
+                                        HiddenExerciseSuggestions.hide(suggestion.name)
+                                        hiddenSuggestions.insert(suggestion.id)
+                                    },
+                                    scrollProxy: proxy
+                                )
+                            }
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+
+                        section("Rating", optional: true) { ratingPicker }
+                        section("Notes", optional: true) { notesField }
+
+                        saveArea
                     }
-
-                    section("Rating", optional: true) { ratingPicker }
-                    section("Notes", optional: true) { notesField }
-
-                    saveArea
+                    .padding(.horizontal, Spacing.pageH)
+                    .padding(.top, Spacing.s)
+                    .padding(.bottom, Spacing.lg)
+                    .animation(.easeOut(duration: 0.22), value: type)
+                    // Tapping empty space between sections dismisses the keyboard.
+                    // It sits behind the content, so fields, buttons, and scrolling
+                    // keep their own touches.
+                    .background(
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture(perform: dismissKeyboard)
+                    )
                 }
-                .padding(.horizontal, Spacing.pageH)
-                .padding(.top, Spacing.s)
-                .padding(.bottom, Spacing.lg)
-                .animation(.easeOut(duration: 0.22), value: type)
-                // Tapping empty space between sections dismisses the keyboard.
-                // It sits behind the content, so fields, buttons, and scrolling
-                // keep their own touches.
-                .background(
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture(perform: dismissKeyboard)
-                )
-            }
-            .scrollIndicators(.hidden)
-            .scrollDismissesKeyboard(.interactively)
-            // Number pads have no Return key; Done covers every field here.
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done", action: dismissKeyboard)
-                        .font(.synText(16, weight: .semibold))
-                        .foregroundStyle(SYN.cyan)
+                .scrollIndicators(.hidden)
+                .scrollDismissesKeyboard(.interactively)
+                // Keep the focused field visible above the keyboard.
+                .onChange(of: notesFocused) { _, focused in
+                    if focused { proxy.scrollTo("notesField", anchor: .center) }
                 }
             }
         }
@@ -403,6 +401,7 @@ struct LogSessionSheet: View {
         )
         .shadow(color: notesFocused ? SYN.cyan.opacity(0.45) : .clear, radius: 12)
         .animation(.easeOut(duration: 0.2), value: notesFocused)
+        .id("notesField")
     }
 
     // MARK: - Save
