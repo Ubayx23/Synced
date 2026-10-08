@@ -13,7 +13,8 @@ settings:
     # (or paste your 10-char Team ID here so it persists across xcodegen runs).
     DEVELOPMENT_TEAM: "M28WFXT445"
     MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: $(CI_BUILD_NUMBER)
+    # Xcode Cloud sets CI_BUILD_NUMBER; local builds fall back to 1.
+    CURRENT_PROJECT_VERSION: $(CI_BUILD_NUMBER:default=1)
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 
 packages:
@@ -42,6 +43,8 @@ targets:
       path: Synced/Info.plist
       properties:
         CFBundleDisplayName: Synced
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen:
           UIColorName: LaunchBg
         UIApplicationSceneManifest:

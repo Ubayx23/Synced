@@ -7,7 +7,7 @@ Synced is an iOS training planner for climbers who also do supporting strength w
 ## Status
 
 - iPhone only, iOS 17+, portrait, dark mode only.
-- On TestFlight for internal testing; external Cohort 1 to follow.
+- On TestFlight. Cohort 1 open for internal testing.
 - Bundle id: `page.synced.app`.
 
 ## Stack
@@ -24,8 +24,9 @@ Synced is an iOS training planner for climbers who also do supporting strength w
 1. **Welcome**: signed-out entry with Create account and I already have an account.
 2. **Sign up / Sign in**: email and password, with a password requirements checklist on Sign up and Forgot password? on Sign in.
 3. **Week** (first tab): Monday to Sunday, chevrons to move between weeks; tap a day to plan, tap a planned session to log it.
-4. **Progress** (second tab): headline, climb grade pyramid, and lift trend cards with session-over-session deltas.
-5. **Sheets**: Plan session, Log session (adapts to climb, lift, or rest), and Profile (sign out).
+4. **Recovery** (second tab): front and back anatomy map; muscles glow cyan when ready and turn gray when recently worked, from logged lifts and climbs over the last 14 days.
+5. **Progress** (third tab): headline, climb grade pyramid, and lift trend cards with session-over-session deltas.
+6. **Sheets**: Plan session, Log session (adapts to climb, lift, or rest), and Profile (daily reminder toggle and time, and sign out).
 
 ## Data model
 
@@ -47,7 +48,7 @@ Re-run `xcodegen generate` whenever `project.yml` changes or files are added, re
 
 ## Deployment
 
-Xcode Cloud watches `main` and builds on every push. `ci_scripts/ci_post_clone.sh` installs XcodeGen, generates the project, and copies the committed `Package.resolved` into the workspace. Builds land in App Store Connect and appear in TestFlight after processing. Xcode Cloud assigns the build number on each archive. The user-facing version comes from the generated `Info.plist` (currently `1.0`); set it under `info.properties` in `project.yml` to change it.
+Xcode Cloud watches `main` and builds on every push. `ci_scripts/ci_post_clone.sh` installs XcodeGen, generates the project, and copies the committed `Package.resolved` into the workspace. Builds land in App Store Connect and appear in TestFlight after processing. Xcode Cloud assigns the build number on each archive through `CI_BUILD_NUMBER` (local builds use 1). The user-facing version is `MARKETING_VERSION` in `project.yml` (currently `0.1.0`); the generated `Info.plist` reads both from build settings.
 
 ## Repo layout
 
@@ -57,14 +58,18 @@ Package.resolved           Pinned SPM versions, copied in by CI
 Synced.xcodeproj/          Generated, gitignored
 Synced/
   SyncedApp.swift          @main; mounts RootView
-  App/                     RootView, MainTabView, SupabaseClient
+  App/                     RootView, MainTabView, NotificationRouting,
+                           SupabaseClient
   Screens/                 LaunchScreen
   Features/
     Auth/                  WelcomeView, SignUpView, SignInView
     Week/                  WeekView, WeekStore, PlanSessionSheet,
                            LogSessionSheet, ExercisesEditor
-    Progress/              ProgressScreen, ProgressStore
+    Recovery/              RecoveryView, RecoveryStore, Muscles,
+                           ExerciseCatalog, BodyModel
+    Progress/              ProgressScreen, ProgressStore, MiniBarChart
     Profile/               ProfileSheet
+    Reminders/             ReminderScheduler
   State/                   SessionStore (auth state)
   Components/              ScreenShell, buttons, SpecInput, FlowLayout,
                            LuminousOrb, PhaseReveal, and other primitives

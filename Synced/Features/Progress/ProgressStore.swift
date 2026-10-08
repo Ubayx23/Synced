@@ -51,6 +51,9 @@ struct LiftExercise: Decodable, Equatable {
 struct LiftSet: Equatable {
     let weightLbs: Double
     let reps: Int
+
+    /// Logged at 0 lbs: pull-ups, dips, hangs, and the like.
+    var isBodyweight: Bool { weightLbs == 0 }
 }
 
 /// Skips malformed sets instead of failing the whole row.
@@ -63,7 +66,8 @@ private struct LenientSet: Decodable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let weight = try? c.decodeIfPresent(Double.self, forKey: .weight_lbs)
         let reps = try? c.decodeIfPresent(Int.self, forKey: .reps)
-        if let weight, let reps, weight > 0, reps > 0 {
+        // 0 lbs is a bodyweight set, not a missing value.
+        if let weight, let reps, weight >= 0, reps > 0 {
             value = LiftSet(weightLbs: weight, reps: reps)
         } else {
             value = nil
@@ -95,9 +99,9 @@ final class ProgressStore {
         for session in sessions.sorted(by: { $0.date > $1.date }) where session.type == .lift {
             let tops = session.exercises
                 .filter { $0.name.exerciseKey == key }
-                .compactMap { $0.topSet?.weightLbs }
-            guard let top = tops.max() else { continue }
-            recent.append(SessionTopSet(id: session.id, date: session.date, topWeightLbs: top))
+                .compactMap(\.topSet)
+            guard let top = tops.max(by: { ($0.weightLbs, $0.reps) < ($1.weightLbs, $1.reps) }) else { continue }
+            recent.append(SessionTopSet(id: session.id, date: session.date, top: top))
             if recent.count == limit { break }
         }
         return recent.reversed()
@@ -154,8 +158,10 @@ private struct ProgressRow: Decodable {
         let sent = (try? c.decodeIfPresent([Int].self, forKey: .climb_grades_sent)) ?? nil
         let single = (try? c.decodeIfPresent(Int.self, forKey: .climb_grade_v)) ?? nil
         let grades = type == .climb ? (sent?.isEmpty == false ? sent! : single.map { [$0] } ?? []) : []
+        // Element by element, like WeekStore: one malformed exercise is
+        // skipped instead of dropping the session's whole list.
         let exercises = type == .lift
-            ? ((try? c.decodeIfPresent([LiftExercise].self, forKey: .lift_exercises)) ?? nil) ?? []
+            ? ((try? c.decodeIfPresent(LiftExerciseList.self, forKey: .lift_exercises)) ?? nil)?.items ?? []
             : []
         session = LoggedSession(id: id, type: type, date: date, grades: grades, exercises: exercises)
     }
@@ -198,6 +204,8 @@ struct SessionDelta {
 
     let weight: Double
     let reps: Int
+    /// Both sessions' last sets were bodyweight: compare by reps only.
+    var bodyweight = false
 
     var tone: Tone {
         if weight == 0 && reps == 0 { return .same }
@@ -206,14 +214,18 @@ struct SessionDelta {
         return .mixed
     }
 
-    /// "+10 lbs, same reps", "Same weight, +2 reps", "+5 lbs, -1 rep".
+    /// "+10 lbs, same reps", "Same weight, +2 reps", "+5 lbs, -1 rep", or
+    /// "+2 reps, bodyweight" when both sessions were bodyweight.
     var text: String {
         if tone == .same { return "Same as last session" }
+        let repWord = abs(reps) == 1 ? "rep" : "reps"
+        if bodyweight {
+            return "\(reps > 0 ? "+" : "-")\(abs(reps)) \(repWord), bodyweight"
+        }
         let amount = abs(weight).rounded() == abs(weight)
             ? String(Int(abs(weight)))
             : abs(weight).formatted(.number.precision(.fractionLength(1)))
         let weightPart = weight > 0 ? "+\(amount) lbs" : weight < 0 ? "-\(amount) lbs" : "Same weight"
-        let repWord = abs(reps) == 1 ? "rep" : "reps"
         let repsPart = reps > 0 ? "+\(reps) \(repWord)" : reps < 0 ? "-\(-reps) \(repWord)" : "same reps"
         return "\(weightPart), \(repsPart)"
     }
@@ -233,7 +245,8 @@ struct ExerciseTrend: Identifiable {
         guard let previous else { return nil }
         return SessionDelta(
             weight: latest.lastSet.weightLbs - previous.lastSet.weightLbs,
-            reps: latest.lastSet.reps - previous.lastSet.reps
+            reps: latest.lastSet.reps - previous.lastSet.reps,
+            bodyweight: latest.lastSet.isBodyweight && previous.lastSet.isBodyweight
         )
     }
 
@@ -247,7 +260,17 @@ struct SessionTopSet: Identifiable {
     /// Session id.
     let id: UUID
     let date: Date
-    let topWeightLbs: Double
+    let top: LiftSet
+}
+
+extension Array where Element == SessionTopSet {
+    /// Bar values: top-set weight, or reps when every set is bodyweight,
+    /// since bodyweight bars would all be zero.
+    var chartValues: [Double] {
+        allSatisfy(\.top.isBodyweight)
+            ? map { Double($0.top.reps) }
+            : map(\.top.weightLbs)
+    }
 }
 
 /// Everything the Progress screen shows, derived from one fetch for a window.
@@ -510,8 +533,9 @@ struct ProgressHero {
 }
 
 extension LiftSet {
-    /// "195 lbs × 5", dropping a trailing ".0".
+    /// "195 lbs × 5", dropping a trailing ".0", or "BW × 10".
     var formatted: String {
+        if isBodyweight { return "BW × \(reps)" }
         let weight = weightLbs.rounded() == weightLbs
             ? String(Int(weightLbs))
             : weightLbs.formatted(.number.precision(.fractionLength(1)))

@@ -41,9 +41,23 @@ enum RecoveryState {
 /// Sessions with no exercises use the session's muscle_groups. Legacy group
 /// values ("full_body", "biceps", "triceps", "forearms") read through
 /// `MuscleGroup.expand`.
+///
+/// Every logged climb marks `climbMuscles`, whatever the grades or send
+/// count: one flat hit, the same as a primary muscle on a lift exercise.
 @Observable
 final class RecoveryStore {
+    /// A failed fetch is `.failed`, never `.loaded` with empty data, so the
+    /// view does not show a fully ready body after an error.
+    enum LoadState: Equatable {
+        case loading
+        case loaded
+        case failed(String)
+    }
+
     static let windowDays = 14
+
+    /// What climbing works: grip, pulling, and body tension.
+    static let climbMuscles: Set<TrainedMuscle> = [.forearms, .lats, .biceps, .rearDelts, .abs, .obliques]
 
     /// Keyed by muscle; missing means not trained in the window.
     private(set) var daysSince: [TrainedMuscle: Int] = [:]
@@ -52,7 +66,7 @@ final class RecoveryStore {
     /// Days since the most recent logged climb or lift (not just lifts with
     /// muscle groups; rest days do not count); nil when none in the window.
     private(set) var daysSinceLastWorkout: Int?
-    private(set) var loaded = false
+    private(set) var loadState: LoadState = .loading
 
     private static let log = Logger(subsystem: "page.synced.app", category: "RecoveryStore")
 
@@ -115,19 +129,25 @@ final class RecoveryStore {
                 if row.session_type != SessionType.rest.rawValue {
                     mostRecent = min(mostRecent ?? days, days)
                 }
-                for muscle in Self.muscles(for: row.muscle_groups ?? [], exercises: row.lift_exercises?.items ?? []) {
+                var trained = Self.muscles(for: row.muscle_groups ?? [], exercises: row.lift_exercises?.items ?? [])
+                if row.session_type == SessionType.climb.rawValue {
+                    trained.formUnion(Self.climbMuscles)
+                }
+                for muscle in trained {
                     result[muscle] = min(result[muscle] ?? days, days)
                 }
             }
             daysSince = result
             daysSinceLastWorkout = mostRecent
             hasSessions = !rows.isEmpty
-            loaded = true
+            loadState = .loaded
         } catch is CancellationError {
             // Interrupted by a refresh or view teardown; not a failure.
+        } catch let error as URLError where error.code == .cancelled {
+            // Same as above, surfaced by URLSession.
         } catch {
             Self.log.error("Recovery load failed: \(String(describing: error), privacy: .public)")
-            loaded = true
+            loadState = .failed(error.localizedDescription)
         }
     }
 

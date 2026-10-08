@@ -59,37 +59,13 @@ struct RecoveryView: View {
                     .padding(.top, Spacing.md)
                     .padding(.bottom, Spacing.lg)
 
-                stats
-
-                sideToggle
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, Spacing.md)
-                    .padding(.bottom, Spacing.md)
-
-                // Takes all remaining height; MuscleMap scales the body to fit.
-                // Crossfades when the side changes.
-                anatomy
-                    .id(side)
-                    .transition(.opacity)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.bottom, Spacing.s)
-
-                // Only before the first logged session in the window: frames
-                // the all-ready body as a starting point.
-                if store.loaded && !store.hasSessions {
-                    Text("Log a session to see your recovery come to life.")
-                        .font(.synText(13))
-                        .foregroundStyle(SYN.textDim)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, Spacing.md)
+                if case .failed(let message) = store.loadState {
+                    // Replaces the map: empty data would read as a fully
+                    // ready body.
+                    errorState(message)
+                } else {
+                    content
                 }
-
-                // Not a scroll view, so the tab bar's safe area already
-                // clears it; no extra tab bar clearance needed.
-                legend
-                    .frame(maxWidth: .infinity)
-                    .padding(.bottom, Spacing.md)
             }
             .padding(.horizontal, Spacing.pageH)
             // Taps anywhere off the anatomy close the label.
@@ -109,6 +85,65 @@ struct RecoveryView: View {
         .sheet(isPresented: $showingProfile) {
             ProfileSheet()
         }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        stats
+
+        sideToggle
+            .frame(maxWidth: .infinity)
+            .padding(.top, Spacing.md)
+            .padding(.bottom, Spacing.md)
+
+        // Takes all remaining height; MuscleMap scales the body to fit.
+        // Crossfades when the side changes.
+        anatomy
+            .id(side)
+            .transition(.opacity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.bottom, Spacing.s)
+
+        // Only before the first logged session in the window: frames
+        // the all-ready body as a starting point.
+        if store.loadState == .loaded && !store.hasSessions {
+            Text("Log a session to see your recovery come to life.")
+                .font(.synText(13))
+                .foregroundStyle(SYN.textDim)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, Spacing.md)
+        }
+
+        // Not a scroll view, so the tab bar's safe area already
+        // clears it; no extra tab bar clearance needed.
+        legend
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, Spacing.md)
+    }
+
+    /// Same treatment as the Week error line, centered in the space the
+    /// map would take.
+    private func errorState(_ message: String) -> some View {
+        VStack(spacing: Spacing.s) {
+            Text("Couldn't load recovery data.")
+                .font(.synText(13))
+                .foregroundStyle(SYN.red)
+            Button("Retry") {
+                Task { await store.load() }
+            }
+            .font(.synText(13, weight: .semibold))
+            .foregroundStyle(SYN.cyan)
+            .buttonStyle(.plain)
+            #if DEBUG
+            Text(message)
+                .font(.synText(11))
+                .foregroundStyle(SYN.textFaint)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+            #endif
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Header
