@@ -1,4 +1,71 @@
 import SwiftUI
+import UIKit
+
+/// UITextField wrapper so tapping a numeric field always lands the cursor
+/// at the end of the current value, never mid-string and never select-all.
+/// SwiftUI's TextField has no API for cursor position.
+private struct CursorEndField: UIViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+    let keyboardType: UIKeyboardType
+    let isFocused: Binding<Bool>
+
+    func makeUIView(context: Context) -> UITextField {
+        let field = UITextField()
+        field.delegate = context.coordinator
+        field.keyboardType = keyboardType
+        field.textAlignment = .right
+        field.font = UIFont(name: "GeistMono-Medium", size: 15)
+        field.textColor = UIColor(SYN.text)
+        field.tintColor = UIColor(SYN.cyan)
+        field.attributedPlaceholder = NSAttributedString(
+            string: placeholder,
+            attributes: [.foregroundColor: UIColor(SYN.textFaint)]
+        )
+        field.addTarget(context.coordinator, action: #selector(Coordinator.editingChanged), for: .editingChanged)
+        return field
+    }
+
+    func updateUIView(_ uiView: UITextField, context: Context) {
+        if uiView.text != text {
+            uiView.text = text
+        }
+        if isFocused.wrappedValue, !uiView.isFirstResponder {
+            uiView.becomeFirstResponder()
+        } else if !isFocused.wrappedValue, uiView.isFirstResponder {
+            uiView.resignFirstResponder()
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text, isFocused: isFocused)
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        let text: Binding<String>
+        let isFocused: Binding<Bool>
+
+        init(text: Binding<String>, isFocused: Binding<Bool>) {
+            self.text = text
+            self.isFocused = isFocused
+        }
+
+        @objc func editingChanged(_ field: UITextField) {
+            text.wrappedValue = field.text ?? ""
+        }
+
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            isFocused.wrappedValue = true
+            // Cursor at the end on focus. No select-all.
+            let end = textField.endOfDocument
+            textField.selectedTextRange = textField.textRange(from: end, to: end)
+        }
+
+        func textFieldDidEndEditing(_ textField: UITextField) {
+            isFocused.wrappedValue = false
+        }
+    }
+}
 
 /// Editable exercise on the Log session sheet. Numbers stay as text while
 /// typing; `cleaned(for:)` turns drafts into saveable exercises.
@@ -100,6 +167,9 @@ struct ExercisesEditor: View {
     var suggestions: [ExerciseSuggestion] = []
     /// Removes a chip from future suggestions.
     var onHideSuggestion: (ExerciseSuggestion) -> Void = { _ in }
+    /// Scrolls the enclosing sheet so a newly focused field stays visible
+    /// above the keyboard. Nil when the editor isn't inside a ScrollViewReader.
+    var scrollProxy: ScrollViewProxy?
 
     static let maxSuggestions = 6
     static let maxExercises = 8
@@ -140,9 +210,11 @@ struct ExercisesEditor: View {
         }
         .animation(structural, value: suggestions)
         .animation(structural, value: exercises.map(\.id))
-        // Clean up whatever was typed once a number field loses focus.
-        .onChange(of: focus) { old, _ in
+        .onChange(of: focus) { old, new in
+            // Clean up whatever was typed once a number field loses focus.
             if let old { sanitize(old) }
+            // Keep the newly focused field visible above the keyboard.
+            if let new { scrollProxy?.scrollTo(new, anchor: .center) }
         }
     }
 
@@ -163,6 +235,7 @@ struct ExercisesEditor: View {
                 .textInputAutocapitalization(.sentences)
                 .submitLabel(.next)
                 .focused($focus, equals: .name(id))
+                .id(Field.name(id))
                 .onSubmit {
                     if let first = exercise.wrappedValue.sets.first { focus = .weight(first.id) }
                 }
@@ -384,16 +457,14 @@ struct ExercisesEditor: View {
                 .foregroundStyle(SYN.textFaint)
                 .frame(width: 20, alignment: .leading)
 
-            numberField(text: set.weight, placeholder: "0", unit: "lbs", keyboard: .decimalPad)
-                .focused($focus, equals: .weight(set.wrappedValue.id))
+            numberField(text: set.weight, placeholder: "0", unit: "lbs", keyboard: .decimalPad, id: .weight(set.wrappedValue.id))
 
             Text("×")
                 .font(.synText(13))
                 .foregroundStyle(SYN.textFaint)
 
             // Reps are whole numbers, so no decimal key.
-            numberField(text: set.reps, placeholder: "0", unit: "reps", keyboard: .numberPad)
-                .focused($focus, equals: .reps(set.wrappedValue.id))
+            numberField(text: set.reps, placeholder: "0", unit: "reps", keyboard: .numberPad, id: .reps(set.wrappedValue.id))
 
             removeButton(label: "Remove set \(number)", action: onRemove)
         }
@@ -403,14 +474,26 @@ struct ExercisesEditor: View {
         text: Binding<String>,
         placeholder: String,
         unit: String,
-        keyboard: UIKeyboardType
+        keyboard: UIKeyboardType,
+        id: Field
     ) -> some View {
         HStack(spacing: Spacing.xs) {
-            TextField("", text: text, prompt: Text(placeholder).foregroundColor(SYN.textFaint))
-                .font(.synMono(15, weight: .medium))
-                .foregroundStyle(SYN.text)
-                .keyboardType(keyboard)
-                .multilineTextAlignment(.trailing)
+            CursorEndField(
+                text: text,
+                placeholder: placeholder,
+                keyboardType: keyboard,
+                isFocused: Binding(
+                    get: { focus == id },
+                    set: { newValue in
+                        if newValue {
+                            focus = id
+                        } else if focus == id {
+                            focus = nil
+                        }
+                    }
+                )
+            )
+            .frame(maxWidth: .infinity)
             Text(unit)
                 .font(.synText(12))
                 .foregroundStyle(SYN.textFaint)
@@ -425,6 +508,7 @@ struct ExercisesEditor: View {
             RoundedRectangle(cornerRadius: Radius.input, style: .continuous)
                 .stroke(SYN.border, lineWidth: 1)
         )
+        .id(id)
     }
 
     private func removeButton(label: String, action: @escaping () -> Void) -> some View {
