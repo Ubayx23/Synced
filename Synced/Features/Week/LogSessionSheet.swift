@@ -36,7 +36,8 @@ struct LogSessionSheet: View {
 
     private var canSave: Bool {
         switch type {
-        case .climb: return !grades.isEmpty
+        // A projecting session with no sends still counts.
+        case .climb: return true
         case .lift:  return !muscles.isEmpty
         case .rest:  return true
         case nil:    return false

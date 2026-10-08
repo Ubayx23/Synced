@@ -41,9 +41,15 @@ should look like they belong to the same app.
 Accent color: cyan (SYN.cyan) is the single brand accent. Session types are
 differentiated by icon plus filled-vs-outlined pill treatment (climb filled,
 lift outlined, rest outlined-muted), never by hue. Planned sessions use a
-dashed outline. Selected states across the app use cyan. Green (SYN.green)
-is reserved for a future semantic-success role and should have zero usages
-in shipped screens.
+dashed outline. Selected states across the app use cyan. Known exception:
+SelectableCard on the Plan sheet uses a white selected stroke; to be
+unified in a future pass.
+
+Green (SYN.green) is reserved for Progress delta indicators showing
+positive change (paired with amber for regression). These three usages
+are sanctioned: ProgressScreen's `comparisonColor` and
+`ExerciseTrendCard.color(for:)`, and the dormant success checkmark in
+SpecInput (no caller passes `isValid`). No other green anywhere.
 
 ## MVP scope (v0.1, "ugly launch")
 Screens:
@@ -107,21 +113,31 @@ Tables:
 - profiles: id (FK auth.users), email, created_at, updated_at.
 - sessions: one row per planned or logged session (climb, lift, or rest).
 - leaderboard_entries, waitlist: exist but are unwired for MVP. Leave their
-  schema alone.
+  schema alone. waitlist has no anon or authenticated grants; only the
+  service role can read or write it.
+
+handle_new_user() and rls_auto_enable() are SECURITY DEFINER and run only
+from triggers; EXECUTE is revoked from public, anon, and authenticated.
 
 ### Session columns
 - `id UUID` primary key, `user_id UUID` (FK auth.users, on delete cascade),
   `created_at TIMESTAMPTZ`
 - `session_type TEXT`: 'climb', 'lift', 'rest'
 - `scheduled_date DATE`: the day the session belongs to, written as
-  yyyy-MM-dd in the device time zone
+  yyyy-MM-dd in the device time zone. Indexed with user_id as
+  `sessions_user_id_scheduled_date_idx (user_id, scheduled_date desc)`
+  for the Week, Recovery, and Progress fetches.
+- `session_type` and `scheduled_date` are nullable at the DB level; the
+  app always writes both and skips rows missing either.
 - `is_planned BOOLEAN DEFAULT false`: true until the session is logged
-- `climb_grades_sent INTEGER[]`: one entry per send, e.g. [2, 2, 3]
-- `climb_grade_v INTEGER`: mirrors max(climb_grades_sent), 0 to 17
+- `climb_grades_sent INTEGER[]`: one entry per send, e.g. [2, 2, 3]. A
+  climb with no sends (a projecting session) stores [].
+- `climb_grade_v INTEGER`: mirrors max(climb_grades_sent), 0 to 17; null
+  when there are no sends
 - `muscle_groups TEXT[]`: lift focus. Values written: chest, back,
   shoulders, arms, legs, core (matching regions on the Recovery map).
-  `MuscleGroup.expand` reads legacy values: 'full_body' as every group, and
-  'biceps', 'triceps', 'forearms' as arms. Rows are never rewritten.
+  Every stored row uses these six (checked 2026-10-08); `MuscleGroup.expand`
+  still tolerates older values defensively.
   Recovery also reads exercise-level muscles from `lift_exercises` through
   the static ExerciseCatalog; an exercise not in the catalog falls back to
   its own muscle_group tag, then to the session's muscle_groups. No schema
@@ -130,13 +146,20 @@ Tables:
 - `lift_exercises JSONB`: written by the Log sheet, read by Progress and
   by the exercise suggestions. Shape:
   `[{"name": "Bench press", "muscle_group": "chest", "sets": [{"weight_lbs": 185, "reps": 5}]}]`.
+  `weight_lbs` 0 is a bodyweight set (pull-ups, dips, hangs), shown as BW.
+  Readers decode the array element by element and skip malformed entries.
   `muscle_group` ties each exercise to one group for suggestions; older
   entries omit it and fall back to the session's muscle_groups.
 
 ## Current code state
 Entry and routing:
-- SyncedApp mounts RootView.
-- RootView shows LaunchScreen, then routes on `SessionStore.phase`:
+- SyncedApp mounts RootView and registers NotificationDelegate.
+- App/NotificationRouting.swift: AppRouter (app-wide flags) and
+  NotificationDelegate. A tapped reminder sets
+  `pendingLogFromReminder`; MainTabView switches to Week and WeekView
+  opens the Log sheet for today.
+- RootView shows LaunchScreen (Screens/LaunchScreen.swift), then routes on
+  `SessionStore.phase`:
   signed in goes to MainTabView; signed out goes to a NavigationStack rooted
   at WelcomeView, which pushes SignUpView or SignInView. The nav bar is
   hidden; each auth screen has its own back chevron back to Welcome, and
@@ -148,24 +171,29 @@ Main app (Features/):
 - MainTabView (App/): Week, Recovery, and Progress tabs, in that order.
   Each tab's header has the profile icon that opens ProfileSheet.
 - Week/: WeekView, WeekStore (fetch, plan, log, delete), PlanSessionSheet,
-  LogSessionSheet, ExercisesEditor.
-- Progress/: ProgressScreen and ProgressStore (one fetch, all aggregation
-  client side).
+  LogSessionSheet, ExercisesEditor. ExercisesEditor includes
+  CursorEndField, a UIKit UITextField bridge that keeps the cursor at the
+  end on focus for the numeric set fields.
+- Progress/: ProgressScreen, ProgressStore (one fetch, all aggregation
+  client side), and MiniBarChart (recent top sets on lift trend cards;
+  reps instead of weight for bodyweight exercises).
 - Recovery/: RecoveryView (MuscleMap front and back anatomy; ready muscles
   glow cyan, worked ones turn gray; tap a muscle for a label),
   RecoveryStore (days since each of 18 TrainedMuscles was trained, last 14
-  days; rolled up to groups only for the READY TO TRAIN count), Muscles.swift
+  days; rolled up to groups only for the READY TO TRAIN count; every logged
+  climb marks forearms, lats, biceps, rear delts, abs, and obliques; a failed
+  fetch shows an error with Retry, never an all-ready body), Muscles.swift
   (TrainedMuscle and its parent group), ExerciseCatalog.swift (static
   catalog of about 110 lifts with primary and secondary muscles), and
   BodyModel (male or female, picked at sign up and stored on the device).
 - Reminders/: ReminderScheduler (local daily reminder, no APNs).
 - Profile/: ProfileSheet (daily reminder toggle and time, sign out).
-- Auth/: WelcomeView, SignUpView, SignInView.
+- Features/Auth/: WelcomeView, SignUpView, SignInView.
 
 Shared UI to reuse:
 - Components/: ScreenShell, ProgressHeader, PrimaryButton, SecondaryButton,
-  TextLinkButton, SpecInput, SpecSlider, SelectableCard, EyebrowTag, GlowDot,
-  PhaseReveal (.phaseFadeUp), AgePicker, LuminousOrb, FlowLayout
+  TextLinkButton, SpecInput, SelectableCard, PhaseReveal (.phaseFadeUp),
+  LuminousOrb, FlowLayout
 - DesignSystem/: Tokens (SYN.*, Spacing, Radius), Typography (synDisplay,
   synText, synMono, EyebrowText), Atmosphere, Wordmark
 
@@ -184,6 +212,11 @@ Shared UI to reuse:
   generates the project, and copies the root Package.resolved into the
   workspace. Package.resolved is committed on purpose (force-added past
   .gitignore); keep it in sync when SPM versions change.
+- Versioning: MARKETING_VERSION in project.yml is the user-facing version.
+  CURRENT_PROJECT_VERSION is `$(CI_BUILD_NUMBER:default=1)`, so Xcode Cloud
+  stamps its build number and local builds get 1. Info.plist is generated by
+  XcodeGen from `info.properties`, which maps CFBundleShortVersionString and
+  CFBundleVersion to those settings; edit project.yml, never Info.plist.
 - Bundle id: page.synced.app. Do not change it.
 
 ## Git conventions

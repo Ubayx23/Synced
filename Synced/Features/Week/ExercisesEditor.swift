@@ -120,18 +120,31 @@ struct SetDraft: Identifiable, Equatable {
         reps = set?.reps ?? ""
     }
 
+    /// A bodyweight set comes back with an empty weight, which reads as BW.
     init(_ set: LiftSet) {
-        weight = set.weightLbs.rounded() == set.weightLbs
-            ? String(Int(set.weightLbs))
-            : String(set.weightLbs)
+        weight = set.isBodyweight
+            ? ""
+            : set.weightLbs.rounded() == set.weightLbs
+                ? String(Int(set.weightLbs))
+                : String(set.weightLbs)
         reps = String(set.reps)
     }
 
-    /// nil when weight or reps is empty or zero.
+    private var normalizedWeight: String {
+        weight.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
+    }
+
+    /// Empty or zero weight: a bodyweight set, shown as BW.
+    var isBodyweight: Bool {
+        normalizedWeight.isEmpty || Double(normalizedWeight) == 0
+    }
+
+    /// nil when reps is empty or zero, or the weight does not parse. An
+    /// empty weight saves as 0, a bodyweight set.
     var value: LiftSet? {
-        let normalized = weight.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
+        let w = normalizedWeight.isEmpty ? 0 : Double(normalizedWeight)
         guard
-            let w = Double(normalized), w > 0,
+            let w, w >= 0,
             let r = Int(reps.trimmingCharacters(in: .whitespaces)), r > 0
         else { return nil }
         return LiftSet(weightLbs: w, reps: r)
@@ -457,7 +470,15 @@ struct ExercisesEditor: View {
                 .foregroundStyle(SYN.textFaint)
                 .frame(width: 20, alignment: .leading)
 
-            numberField(text: set.weight, placeholder: "0", unit: "lbs", keyboard: .decimalPad, id: .weight(set.wrappedValue.id))
+            // Empty or 0 is bodyweight: the unit reads BW and an empty field
+            // shows nothing else.
+            numberField(
+                text: set.weight,
+                placeholder: set.wrappedValue.isBodyweight ? "" : "0",
+                unit: set.wrappedValue.isBodyweight ? "BW" : "lbs",
+                keyboard: .decimalPad,
+                id: .weight(set.wrappedValue.id)
+            )
 
             Text("×")
                 .font(.synText(13))

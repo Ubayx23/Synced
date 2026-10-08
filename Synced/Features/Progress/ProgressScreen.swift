@@ -232,7 +232,7 @@ struct ProgressScreen: View {
                     ForEach(s.trends.prefix(5)) { trend in
                         ExerciseTrendCard(
                             trend: trend,
-                            recentTops: store.recentTopSets(for: trend.name).map(\.topWeightLbs)
+                            recentTops: store.recentTopSets(for: trend.name).chartValues
                         )
                     }
 
@@ -311,7 +311,8 @@ struct ProgressScreen: View {
 
 private struct ExerciseTrendCard: View {
     let trend: ExerciseTrend
-    /// Top-set weights from the exercise's recent sessions, oldest first.
+    /// Top-set weights (reps for bodyweight) from the exercise's recent
+    /// sessions, oldest first.
     let recentTops: [Double]
 
     private var showsLatestSet: Bool { trend.points.count >= ProgressSummary.minChartPoints }

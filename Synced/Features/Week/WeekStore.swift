@@ -410,6 +410,8 @@ private struct PlanInsert: Encodable {
 /// Columns a log writes. Fields that do not apply to the chosen type are
 /// written as cleared values, so switching a session from climb to lift
 /// does not leave stale grades behind. climb_grade_v mirrors the top send.
+/// A climb with no sends stores an empty climb_grades_sent and a null
+/// climb_grade_v.
 private struct LogFields: Encodable {
     let session_type: String
     let climb_grades_sent: [Int]?
@@ -422,7 +424,7 @@ private struct LogFields: Encodable {
     init(_ log: SessionLog) {
         session_type = log.type.rawValue
         let sends = log.type == .climb ? log.grades.sorted() : []
-        climb_grades_sent = sends.isEmpty ? nil : sends
+        climb_grades_sent = log.type == .climb ? sends : nil
         climb_grade_v = sends.max()
         muscle_groups = log.type == .lift
             ? MuscleGroup.allCases.filter(log.muscles.contains).map(\.rawValue)

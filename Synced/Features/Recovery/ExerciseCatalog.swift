@@ -18,8 +18,12 @@ enum ExerciseCatalog {
 
     /// Case-insensitive and tolerant of spacing, hyphens, and apostrophes:
     /// "Pull-Up", "pull up", and "  pullup" style differences all resolve.
+    /// A plural like "Pull-ups" or "Dips" falls back to its singular.
     static func find(_ name: String) -> CatalogExercise? {
-        entries[normalize(name)]
+        let key = normalize(name)
+        if let entry = entries[key] { return entry }
+        guard key.count > 1, key.hasSuffix("s") else { return nil }
+        return entries[String(key.dropLast())]
     }
 
     static func normalize(_ name: String) -> String {
@@ -176,5 +180,9 @@ enum ExerciseCatalog {
         (["lock off", "lock offs"], [.biceps, .lats], [.forearms]),
         (["front lever"], [.lats, .abs], [.rhomboids]),
         (["typewriter pull up", "typewriter pullup"], [.lats], [.biceps]),
+        (["archer pull up", "archer pullup"], [.lats], [.biceps, .rhomboids]),
+        (["muscle up", "muscleup"], [.lats, .triceps], [.biceps, .pecs, .frontDelts]),
+        (["hollow hold", "hollow body hold", "hollow body"], [.abs], [.obliques]),
+        (["pike push up", "pike pushup"], [.frontDelts, .sideDelts], [.triceps]),
     ]
 }
