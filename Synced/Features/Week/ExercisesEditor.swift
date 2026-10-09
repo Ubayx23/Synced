@@ -27,11 +27,16 @@ private struct CursorEndField: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UITextField, context: Context) {
+        // Rows are rebuilt as sets change; keep the coordinator writing to
+        // the current bindings.
+        context.coordinator.text = $text
+        context.coordinator.isFocused = isFocused
         if uiView.text != text {
             uiView.text = text
         }
         if isFocused.wrappedValue, !uiView.isFirstResponder {
-            uiView.becomeFirstResponder()
+            // Next run loop: a just-added set row is not in a window yet.
+            DispatchQueue.main.async { uiView.becomeFirstResponder() }
         } else if !isFocused.wrappedValue, uiView.isFirstResponder {
             uiView.resignFirstResponder()
         }
@@ -42,8 +47,8 @@ private struct CursorEndField: UIViewRepresentable {
     }
 
     final class Coordinator: NSObject, UITextFieldDelegate {
-        let text: Binding<String>
-        let isFocused: Binding<Bool>
+        var text: Binding<String>
+        var isFocused: Binding<Bool>
 
         init(text: Binding<String>, isFocused: Binding<Bool>) {
             self.text = text
@@ -55,14 +60,17 @@ private struct CursorEndField: UIViewRepresentable {
         }
 
         func textFieldDidBeginEditing(_ textField: UITextField) {
-            isFocused.wrappedValue = true
-            // Cursor at the end on focus. No select-all.
-            let end = textField.endOfDocument
-            textField.selectedTextRange = textField.textRange(from: end, to: end)
+            if !isFocused.wrappedValue { isFocused.wrappedValue = true }
+            // Cursor at the end on focus. No select-all. Deferred because a
+            // tap places the caret at the touch point after this call.
+            DispatchQueue.main.async {
+                let end = textField.endOfDocument
+                textField.selectedTextRange = textField.textRange(from: end, to: end)
+            }
         }
 
         func textFieldDidEndEditing(_ textField: UITextField) {
-            isFocused.wrappedValue = false
+            if isFocused.wrappedValue { isFocused.wrappedValue = false }
         }
     }
 }
@@ -198,7 +206,32 @@ struct ExercisesEditor: View {
     /// text fields mid-edit and throws the cursor to the end.
     private let structural = Animation.easeOut(duration: 0.2)
 
-    @FocusState private var focus: Field?
+    /// Name fields are SwiftUI TextFields and use FocusState. Weight and
+    /// reps are UIKit fields (CursorEndField), which FocusState cannot track:
+    /// it resets a value no SwiftUI view is bound to, which resigned the
+    /// field after the first keystroke. They use plain state instead.
+    @FocusState private var nameFocus: UUID?
+    @State private var numberFocus: Field?
+
+    /// The one focused field across both kinds. Setting it moves focus.
+    private var focus: Field? {
+        get { numberFocus ?? nameFocus.map(Field.name) }
+        nonmutating set {
+            switch newValue {
+            case .name(let id):
+                numberFocus = nil
+                nameFocus = id
+            case .weight, .reps:
+                // Leave nameFocus alone: clearing it makes SwiftUI resign
+                // the current first responder, which is now this UIKit
+                // field. SwiftUI clears it when the name field resigns.
+                numberFocus = newValue
+            case nil:
+                nameFocus = nil
+                numberFocus = nil
+            }
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.m) {
@@ -247,7 +280,7 @@ struct ExercisesEditor: View {
                 .foregroundStyle(SYN.text)
                 .textInputAutocapitalization(.sentences)
                 .submitLabel(.next)
-                .focused($focus, equals: .name(id))
+                .focused($nameFocus, equals: id)
                 .id(Field.name(id))
                 .onSubmit {
                     if let first = exercise.wrappedValue.sets.first { focus = .weight(first.id) }
@@ -504,12 +537,12 @@ struct ExercisesEditor: View {
                 placeholder: placeholder,
                 keyboardType: keyboard,
                 isFocused: Binding(
-                    get: { focus == id },
+                    get: { numberFocus == id },
                     set: { newValue in
                         if newValue {
                             focus = id
-                        } else if focus == id {
-                            focus = nil
+                        } else if numberFocus == id {
+                            numberFocus = nil
                         }
                     }
                 )
