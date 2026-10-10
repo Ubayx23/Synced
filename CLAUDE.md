@@ -47,28 +47,33 @@ unified in a future pass.
 
 Green (SYN.green) is reserved for Progress delta indicators showing
 positive change (paired with amber for regression). These three usages
-are sanctioned: ProgressScreen's `comparisonColor` and
-`ExerciseTrendCard.color(for:)`, and the dormant success checkmark in
-SpecInput (no caller passes `isValid`). No other green anywhere.
+are sanctioned: ProgressScreen's `monthComparison` (+N grades from last
+month) and the delta line on `ImprovementCard`, and the dormant success
+checkmark in SpecInput (no caller passes `isValid`). No other green
+anywhere.
 
 ## MVP scope (v0.1, "ugly launch")
 Screens:
 1. Welcome (signed-out entry: Create account or I already have an account)
 2. Sign up / Sign in (pushed from Welcome)
-3. Week (tab 1): one Monday to Sunday week, chevrons to move between weeks
-4. Recovery (tab 2): anatomy view with muscle groups colored by recent
-   training load
-5. Progress (tab 3): headline, climb grade pyramid, lift trend cards, footer
+3. Today (tab 1): today's session, a swipeable Monday to Sunday day strip,
+   Recovery and Last cards, Tomorrow, Last Note, and This Week totals
+4. Progress (tab 2): Climbing, Lifts Improving, Recent Lifts
+5. Recovery: anatomy view with muscles colored by recent training load,
+   opened as a modal sheet from Today's Recovery card (not a tab)
 6. Plan session sheet, Log session sheet, Profile sheet (daily reminder
    setting and sign out)
 
 Plan and log are one flow:
-- Tap a day in the Week view to add a planned session.
+- Tap a day in Today's strip: an empty day opens the Plan sheet (today
+  opens the Log sheet), a day with one session opens it, a day with
+  several offers a choice. Long press plans another session.
 - Tap a planned session to mark it done and log it. The Log session sheet
-  opens pre-filled with the planned session type. Log now logs for today.
+  opens pre-filled with the planned session type. Today's hero button
+  logs today's planned session, or a fresh one when nothing is planned.
 
 Session types:
-- Climb: one or more sends, each a V-grade (V0 to V17).
+- Climb: zero or more sends, each a V-grade (V0 to V17).
 - Lift: one or more muscle groups, plus optional exercises with sets of
   weight (lbs) and reps.
 - Rest: no extra fields.
@@ -168,15 +173,41 @@ Entry and routing:
   `markSignedIn()`, `signOut()`.
 
 Main app (Features/):
-- MainTabView (App/): Week, Recovery, and Progress tabs, in that order.
-  Each tab's header has the profile icon that opens ProfileSheet.
-- Week/: WeekView, WeekStore (fetch, plan, log, delete), PlanSessionSheet,
+- MainTabView (App/): Today and Progress tabs, in that order, with line
+  icons. Each tab's header has the profile icon that opens ProfileSheet.
+- Today/: TodayView and TodayStore. TodayStore wraps a WeekStore loading
+  this week through tomorrow, plus `WeekStore.lastLogged` for the most
+  recent logged session; the caption ("N of 7 trained", days with a
+  logged climb or lift), hero, Tomorrow, Last, Last Note, and This Week
+  totals (climbs, lifts, weight times reps volume) are derived from those.
+  The day strip pages weeks with its own WeekStore. Hero and Tomorrow
+  "Change" switch a planned session's type via `WeekStore.changeType`.
+  Last Note shows the most recent logged session's note, or an active
+  prompt that opens the Log sheet for today focused on Notes
+  (`LogSessionSheet(focusNotesOnAppear:)`). The Recovery card opens
+  RecoveryView as a sheet with a close button (`onClose`). Reminder taps
+  land here and open the Log sheet. Layout follows the "Today Final"
+  Claude Design mockup and fits 393 x 852 without scrolling.
+- Week/: WeekView, WeekStore (fetch, plan, log, delete, changeType,
+  lastLogged), PlanSessionSheet,
   LogSessionSheet, ExercisesEditor. ExercisesEditor includes
   CursorEndField, a UIKit UITextField bridge that keeps the cursor at the
-  end on focus for the numeric set fields.
+  end on focus for the numeric set fields. WeekView is no longer mounted
+  as a tab; the Plan and Log sheets and WeekStore are shared with Today.
 - Progress/: ProgressScreen, ProgressStore (one fetch, all aggregation
-  client side), and MiniBarChart (recent top sets on lift trend cards;
-  reps instead of weight for bodyweight exercises).
+  client side in ProgressReport), and MiniBarChart (recent top sets;
+  reps instead of weight for bodyweight exercises). Three sections:
+  - Climbing: highest grade this calendar month against last month (+N
+    green, same or none dim, down amber), the grade pyramid across all
+    time, and up to five most recent first-at-grade milestones.
+  - Improving: exercises whose latest top set beat the previous
+    session's. Top set is max weight times reps, ties to the heavier set,
+    bodyweight compared by reps. Improving means more weight at the same
+    or more reps, or more reps at the same or more weight. Flat,
+    declining, traded-off, and single-session exercises are hidden.
+    Biggest improvement first.
+  - Recent Lifts: every exercise ever logged, most recent first, each
+    opening a history sheet with every set per session.
 - Recovery/: RecoveryView (MuscleMap front and back anatomy; ready muscles
   glow cyan, worked ones turn gray; tap a muscle for a label),
   RecoveryStore (days since each of 18 TrainedMuscles was trained, last 14
@@ -184,11 +215,19 @@ Main app (Features/):
   climb marks forearms, lats, biceps, rear delts, abs, and obliques; a failed
   fetch shows an error with Retry, never an all-ready body), Muscles.swift
   (TrainedMuscle and its parent group), ExerciseCatalog.swift (static
-  catalog of about 110 lifts with primary and secondary muscles), and
+  catalog of about 115 lifts with primary and secondary muscles), and
   BodyModel (male or female, picked at sign up and stored on the device).
 - Reminders/: ReminderScheduler (local daily reminder, no APNs).
 - Profile/: ProfileSheet (daily reminder toggle and time, sign out).
 - Features/Auth/: WelcomeView, SignUpView, SignInView.
+
+Shared helpers:
+- `String.exerciseMatchKey` (ProgressStore.swift): trimmed, lowercased
+  exercise name. Use it everywhere exercises are grouped, matched, or
+  compared (Progress, suggestions, hidden chips). Stored names are never
+  rewritten; display casing comes from the first time a name was logged.
+- `Date.relativeDayLabel` ("Today", "Yesterday", "3 days ago", "Oct 1")
+  and `Date.shortDayLabel` ("Oct 3").
 
 Shared UI to reuse:
 - Components/: ScreenShell, ProgressHeader, PrimaryButton, SecondaryButton,

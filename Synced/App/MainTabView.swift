@@ -46,17 +46,27 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $tab) {
             TodayView()
-                .tabItem { Label("Today", systemImage: "smallcircle.filled.circle") }
+                .tabItem { tabLabel("Today", symbol: "smallcircle.filled.circle") }
                 .tag(Tab.today)
 
             ProgressScreen()
-                .tabItem { Label("Progress", systemImage: "chart.bar") }
+                .tabItem { tabLabel("Progress", symbol: "chart.bar") }
                 .tag(Tab.progress)
         }
         .tint(SYN.cyan)
         // A tapped reminder lands on Today, which opens the Log sheet.
         .onChange(of: router.pendingLogFromReminder) { _, pending in
             if pending { tab = .today }
+        }
+    }
+
+    /// Line icons, as designed; tab items otherwise switch to fill symbols.
+    private func tabLabel(_ title: String, symbol: String) -> some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: symbol)
+                .environment(\.symbolVariants, .none)
         }
     }
 }

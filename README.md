@@ -23,9 +23,9 @@ Synced is an iOS training planner for climbers who also do supporting strength w
 
 1. **Welcome**: signed-out entry with Create account and I already have an account.
 2. **Sign up / Sign in**: email and password, with a password requirements checklist on Sign up and Forgot password? on Sign in.
-3. **Week** (first tab): Monday to Sunday, chevrons to move between weeks; tap a day to plan, tap a planned session to log it.
-4. **Recovery** (second tab): front and back anatomy map; muscles glow cyan when ready and turn gray when recently worked, from logged lifts and climbs over the last 14 days.
-5. **Progress** (third tab): headline, climb grade pyramid, and lift trend cards with session-over-session deltas.
+3. **Today** (first tab): today's session with a one-tap Log button, a swipeable Monday to Sunday strip (tap a day to plan or open it), Recovery and Last cards, Tomorrow, the last note, and this week's totals.
+4. **Progress** (second tab): Climbing (top grade this month, grade pyramid, first-at-grade milestones), Lifts Improving, and Recent Lifts with per-exercise history.
+5. **Recovery** (sheet from Today's Recovery card): front and back anatomy map; muscles glow cyan when ready and turn gray when recently worked, from logged lifts and climbs over the last 14 days.
 6. **Sheets**: Plan session, Log session (adapts to climb, lift, or rest), and Profile (daily reminder toggle and time, and sign out).
 
 ## Data model
@@ -63,8 +63,9 @@ Synced/
   Screens/                 LaunchScreen
   Features/
     Auth/                  WelcomeView, SignUpView, SignInView
-    Week/                  WeekView, WeekStore, PlanSessionSheet,
-                           LogSessionSheet, ExercisesEditor
+    Today/                 TodayView, TodayStore (home tab)
+    Week/                  WeekStore, PlanSessionSheet, LogSessionSheet,
+                           ExercisesEditor, WeekView (no longer a tab)
     Recovery/              RecoveryView, RecoveryStore, Muscles,
                            ExerciseCatalog, BodyModel
     Progress/              ProgressScreen, ProgressStore, MiniBarChart

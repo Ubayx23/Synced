@@ -6,6 +6,9 @@ import SwiftUI
 struct LogSessionSheet: View {
     let session: Session?
     let store: WeekStore
+    /// Opens with the Notes field focused and scrolled into view, for the
+    /// Last Note prompt on Today.
+    var focusNotesOnAppear = false
 
     @Environment(\.dismiss) private var dismiss
     @State private var type: SessionType?
@@ -23,9 +26,10 @@ struct LogSessionSheet: View {
     @State private var errorMessage: String?
     @FocusState private var notesFocused: Bool
 
-    init(session: Session?, store: WeekStore) {
+    init(session: Session?, store: WeekStore, focusNotesOnAppear: Bool = false) {
         self.session = session
         self.store = store
+        self.focusNotesOnAppear = focusNotesOnAppear
         _type = State(initialValue: session?.type)
         _grades = State(initialValue: session?.grades ?? [])
         _muscles = State(initialValue: Set(session?.muscles ?? []))
@@ -160,6 +164,13 @@ struct LogSessionSheet: View {
         .presentationBackground(SYN.bg)
         .presentationCornerRadius(Radius.card * 2)
         .interactiveDismissDisabled(isSaving || isDeleting)
+        // After the sheet settles, so the keyboard does not fight the
+        // presentation. Focusing scrolls to Notes through onChange above.
+        .task {
+            guard focusNotesOnAppear else { return }
+            try? await Task.sleep(for: .milliseconds(450))
+            notesFocused = true
+        }
         // Fetch past exercises once, the first time the sheet shows a lift.
         .task(id: type == .lift) {
             guard type == .lift, !historyLoaded else { return }

@@ -102,10 +102,13 @@ struct TodayView: View {
             PlanSessionSheet(day: target.day, store: target.store)
         }
         .sheet(item: $logTarget, onDismiss: refresh) { target in
-            LogSessionSheet(session: target.session, store: target.store)
+            LogSessionSheet(session: target.session, store: target.store, focusNotesOnAppear: target.focusNotes)
         }
         .sheet(isPresented: $showingRecovery, onDismiss: refresh) {
-            RecoveryView()
+            RecoveryView(onClose: { showingRecovery = false })
+                .presentationDragIndicator(.visible)
+                .presentationBackground(SYN.bg)
+                .presentationCornerRadius(Radius.card * 2)
         }
         .sheet(isPresented: $showingProfile) {
             ProfileSheet()
@@ -169,9 +172,9 @@ struct TodayView: View {
 
     // MARK: - Routing
 
-    private func openLog(_ session: Session?) {
+    private func openLog(_ session: Session?, focusNotes: Bool = false) {
         let day = session?.date ?? today
-        logTarget = TodayLogTarget(session: session, store: store(for: day))
+        logTarget = TodayLogTarget(session: session, store: store(for: day), focusNotes: focusNotes)
     }
 
     private func openPlan(_ day: Date) {
@@ -216,7 +219,7 @@ struct TodayView: View {
         weekOffset = 0
         await store.load(today: today)
         let planned = store.sessions(on: today).first { $0.isPlanned }
-        logTarget = TodayLogTarget(session: planned, store: store.week)
+        logTarget = TodayLogTarget(session: planned, store: store.week, focusNotes: false)
     }
 
     // MARK: - Header
@@ -515,7 +518,8 @@ struct TodayView: View {
             }
         } else {
             // Active prompt: reads as a tap target, not a disabled state.
-            wideCard(title: "Last note", height: 64, action: { openLog(store.heroSession(today: today)) }) {
+            // Opens today's session (or a fresh one) at Notes, focused.
+            wideCard(title: "Last note", height: 64, action: { openLog(store.heroSession(today: today), focusNotes: true) }) {
                 HStack(spacing: Spacing.s) {
                     Text("Tap to add a note to today's session.")
                         .font(.synText(14))
@@ -685,6 +689,7 @@ private struct TodayPlanTarget: Identifiable {
 private struct TodayLogTarget: Identifiable {
     let session: Session?
     let store: WeekStore
+    var focusNotes = false
     let id = UUID()
 }
 
