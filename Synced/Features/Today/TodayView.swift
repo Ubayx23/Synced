@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Home tab. Today's session up top, a swipeable Monday to Sunday strip for
 /// planning, then recovery, the last session, tomorrow, the last note, and
-/// this week's totals. Sized to fit a 393 x 852 screen without scrolling;
-/// smaller screens scroll.
+/// this week's totals. Laid out with fixed heights from the "Today Final"
+/// mockup so it fills a 393 x 852 screen exactly; smaller screens scroll.
 struct TodayView: View {
     @State private var store = TodayStore()
     /// Sessions for the strip when it shows a week other than this one.
@@ -39,47 +39,17 @@ struct TodayView: View {
     }
 
     var body: some View {
-        ZStack {
-            ScreenBackground()
-
+        GeometryReader { geo in
+            // Always a ScrollView so pull to refresh works; at 393 x 852 the
+            // content is exactly the visible height, so nothing scrolls.
             ScrollView {
-                VStack(spacing: 0) {
-                    header
-                        .padding(.horizontal, Spacing.pageH)
-                        .padding(.top, Spacing.s)
-
-                    strip
-                        .padding(.top, Spacing.lg)
-
-                    hero
-                        .padding(.horizontal, Spacing.pageH)
-                        .padding(.top, Spacing.lg)
-
-                    HStack(spacing: Spacing.m) {
-                        recoveryCard
-                        lastCard
-                    }
-                    .padding(.horizontal, Spacing.pageH)
-                    .padding(.top, Spacing.l)
-
-                    tomorrowCard
-                        .padding(.horizontal, Spacing.pageH)
-                        .padding(.top, Spacing.md)
-
-                    noteCard
-                        .padding(.horizontal, Spacing.pageH)
-                        .padding(.top, Spacing.m)
-
-                    weekStatsCard
-                        .padding(.horizontal, Spacing.pageH)
-                        .padding(.top, Spacing.m)
-                }
-                .padding(.bottom, Spacing.lg)
+                content(topInset: max(0, TodayLayout.headerTop - geo.safeAreaInsets.top))
+                    .frame(minHeight: geo.size.height, alignment: .top)
             }
             .scrollIndicators(.hidden)
-            .scrollBounceBehavior(.basedOnSize)
             .refreshable { await reload() }
         }
+        .background(SYN.bg.ignoresSafeArea())
         .task { await reload() }
         .task(id: weekOffset) {
             guard weekOffset != 0 else { return }
@@ -143,6 +113,43 @@ struct TodayView: View {
             isPresented: Binding(get: { changeError != nil }, set: { if !$0 { changeError = nil } })
         ) {
             Button("OK", role: .cancel) {}
+        }
+    }
+
+    /// The mockup's vertical stack, top to bottom. The tab bar sits below,
+    /// supplied by MainTabView.
+    private func content(topInset: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            header
+                .padding(.top, topInset)
+
+            strip
+                .padding(.top, Spacing.lg)
+
+            hero
+                .padding(.horizontal, Spacing.pageH)
+                .padding(.top, TodayLayout.heroGap)
+
+            HStack(spacing: Spacing.m) {
+                recoveryCard
+                lastCard
+            }
+            .padding(.horizontal, Spacing.pageH)
+            .padding(.top, Spacing.l)
+
+            tomorrowCard
+                .padding(.horizontal, Spacing.pageH)
+                .padding(.top, Spacing.md)
+
+            noteCard
+                .padding(.horizontal, Spacing.pageH)
+                .padding(.top, Spacing.m)
+
+            weekStatsCard
+                .padding(.horizontal, Spacing.pageH)
+                .padding(.top, Spacing.m)
+
+            Spacer(minLength: TodayLayout.tabBarGap)
         }
     }
 
@@ -226,19 +233,19 @@ struct TodayView: View {
 
     private var header: some View {
         HStack {
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                EyebrowText(text: "Today")
-                    .foregroundStyle(SYN.textDim)
+            VStack(alignment: .leading, spacing: 5) {
+                eyebrow("Today")
                 Text(today.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
                     .font(.synMono(15))
+                    .kerning(-0.15)
                     .foregroundStyle(SYN.text)
             }
 
             Spacer()
 
             Button { showingProfile = true } label: {
-                Image(systemName: "person.fill")
-                    .font(.system(size: 15, weight: .medium))
+                Text(initials)
+                    .font(.synText(13, weight: .medium))
                     .foregroundStyle(SYN.textDim)
                     .frame(width: 36, height: 36)
                     .background(Circle().fill(SYN.surfaceHi))
@@ -249,13 +256,22 @@ struct TodayView: View {
             .padding(.trailing, -Spacing.xs)
             .accessibilityLabel("Profile")
         }
-        .frame(height: 48)
+        .padding(.horizontal, Spacing.pageH)
+        .frame(height: TodayLayout.header)
+    }
+
+    /// No names are stored, so the avatar shows the first two letters of
+    /// the email's local part.
+    private var initials: String {
+        let local = supabase.auth.currentUser?.email?.split(separator: "@").first.map(String.init) ?? ""
+        let letters = local.filter(\.isLetter)
+        return String((letters.isEmpty ? local : letters).prefix(2)).uppercased()
     }
 
     // MARK: - Day strip
 
     private var strip: some View {
-        VStack(spacing: Spacing.s) {
+        VStack(spacing: 0) {
             HStack(spacing: 2) {
                 ForEach(stripDays, id: \.self) { day in
                     DayCell(
@@ -267,7 +283,7 @@ struct TodayView: View {
                     )
                 }
             }
-            .padding(.horizontal, Spacing.md)
+            .padding(.horizontal, TodayLayout.stripInset)
             .id(weekOffset)
             .transition(.push(from: pagedForward ? .trailing : .leading))
             .frame(maxWidth: .infinity)
@@ -282,8 +298,11 @@ struct TodayView: View {
                     }
             )
 
+            Spacer(minLength: 0)
+
             stripCaption
         }
+        .frame(height: TodayLayout.strip)
     }
 
     private func page(_ step: Int) {
@@ -329,7 +348,7 @@ struct TodayView: View {
     private var hero: some View {
         let session = store.heroSession(today: today)
         let planned = session?.isPlanned == true
-        let eyebrow = session.map { "\($0.type.title) session" } ?? "Today"
+        let eyebrowText = session.map { "\($0.type.title) session" } ?? "Today"
         let subtitle: String = {
             guard let session else { return "Nothing planned yet" }
             return session.isPlanned ? "Planned for today" : "Logged today"
@@ -341,27 +360,35 @@ struct TodayView: View {
 
         return ZStack(alignment: .topTrailing) {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: Spacing.m) {
-                    Image(systemName: session?.type.symbol ?? "plus")
-                        .font(.system(size: 19, weight: .medium))
+                HStack(spacing: 14) {
+                    TypeGlyph(type: session?.type)
                         .foregroundStyle(SYN.text)
                         .frame(width: 44, height: 44)
                         .background(RoundedRectangle(cornerRadius: Radius.tile, style: .continuous).fill(SYN.surfaceHi))
-                    VStack(alignment: .leading, spacing: Spacing.xs) {
-                        EyebrowText(text: eyebrow)
-                            .foregroundStyle(SYN.textDim)
+                    VStack(alignment: .leading, spacing: 5) {
+                        eyebrow(eyebrowText)
                         Text(subtitle)
                             .font(.synText(18, weight: .medium))
                             .kerning(-0.36)
                             .foregroundStyle(SYN.text)
                     }
                 }
-                Spacer(minLength: Spacing.m)
-                PrimaryButton(title: buttonTitle) { openLog(session) }
+                Spacer(minLength: 0)
+                Button { openLog(session) } label: {
+                    Text(buttonTitle)
+                        .font(.synText(16, weight: .bold))
+                        .kerning(-0.16)
+                        .foregroundStyle(SYN.bg)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).fill(SYN.cyan))
+                        .contentShape(RoundedRectangle(cornerRadius: Radius.button, style: .continuous))
+                }
+                .buttonStyle(PressDimStyle())
             }
-            .padding(Spacing.md)
+            .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 160)
+            .frame(height: TodayLayout.hero)
             .contentShape(RoundedRectangle(cornerRadius: Radius.hero, style: .continuous))
             .onTapGesture { openLog(session) }
 
@@ -370,7 +397,7 @@ struct TodayView: View {
                     Text("Change")
                         .font(.synText(12, weight: .medium))
                         .foregroundStyle(SYN.cyan)
-                        .padding(Spacing.md)
+                        .padding(18)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -379,20 +406,28 @@ struct TodayView: View {
         }
         .background(
             RoundedRectangle(cornerRadius: Radius.hero, style: .continuous)
-                .fill(SYN.surface)
+                .fill(SYN.card)
                 .shadow(color: SYN.cyan.opacity(0.12), radius: 16)
         )
+        // Half point cyan edge just outside the card.
         .overlay(
-            RoundedRectangle(cornerRadius: Radius.hero, style: .continuous)
+            RoundedRectangle(cornerRadius: Radius.hero + 0.25, style: .continuous)
                 .stroke(SYN.cyan.opacity(0.25), lineWidth: 0.5)
-        )
-        // Soft cyan bloom past the card edges.
-        .background(
-            RoundedRectangle(cornerRadius: Radius.hero, style: .continuous)
-                .fill(SYN.cyan.opacity(0.15))
-                .padding(-Spacing.md)
-                .blur(radius: 24)
+                .padding(-0.25)
                 .allowsHitTesting(false)
+        )
+        // Radial bloom 22 past the sides and 28 past the top and bottom.
+        .background(
+            EllipticalGradient(
+                colors: [SYN.cyan.opacity(0.15), SYN.cyan.opacity(0)],
+                center: .center,
+                startRadiusFraction: 0,
+                endRadiusFraction: 0.5
+            )
+            .padding(.horizontal, -22)
+            .padding(.vertical, -28)
+            .blur(radius: 8)
+            .allowsHitTesting(false)
         )
     }
 
@@ -404,12 +439,14 @@ struct TodayView: View {
                 HStack(alignment: .firstTextBaseline, spacing: Spacing.xs) {
                     Text(recovery.loadState == .loaded ? "\(recovery.readyCount)" : "-")
                         .font(.synMono(30, weight: .medium))
+                        .kerning(-0.6)
                         .foregroundStyle(SYN.cyan)
                         .contentTransition(.numericText())
                     Text("/ \(MuscleGroup.allCases.count)")
                         .font(.synMono(15))
                         .foregroundStyle(SYN.textDim)
                 }
+                .frame(height: 30)
                 Text("ready")
                     .font(.synText(13))
                     .foregroundStyle(SYN.textDim)
@@ -429,6 +466,7 @@ struct TodayView: View {
                     .foregroundStyle(last == nil ? SYN.textDim : SYN.text)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                    .frame(height: 30)
                 Text(last?.date.relativeDayLabel(today: today) ?? "Log your first session")
                     .font(.synText(13))
                     .foregroundStyle(SYN.textDim)
@@ -440,22 +478,20 @@ struct TodayView: View {
 
     private func smallCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            EyebrowText(text: title)
-                .foregroundStyle(SYN.textDim)
+            eyebrow(title)
             Spacer(minLength: 0)
-            VStack(alignment: .leading, spacing: Spacing.xs) {
+            VStack(alignment: .leading, spacing: 5) {
                 content()
             }
         }
-        .padding(.vertical, Spacing.m)
+        .padding(.vertical, 14)
         .padding(.horizontal, Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 95)
+        .frame(height: TodayLayout.pair)
         .overlay(alignment: .topTrailing) {
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
+            LineGlyph(kind: .chevron, size: 14)
                 .foregroundStyle(SYN.textFaint)
-                .padding(Spacing.m)
+                .padding(14)
         }
         .todayCard()
     }
@@ -464,7 +500,7 @@ struct TodayView: View {
 
     private var tomorrowCard: some View {
         let session = store.tomorrowSession(today: today)
-        return wideCard(title: "Tomorrow", height: 64, action: { openPlan(tomorrow) }) {
+        return wideCard(title: "Tomorrow", height: TodayLayout.wide, action: { openPlan(tomorrow) }) {
             HStack(alignment: .firstTextBaseline, spacing: Spacing.m) {
                 if let session {
                     (Text(session.type.title.uppercased())
@@ -472,6 +508,7 @@ struct TodayView: View {
                         .foregroundColor(SYN.textDim)
                         .font(.synText(15)))
                         .font(.synText(15, weight: .medium))
+                        .kerning(-0.15)
                         .foregroundStyle(SYN.text)
                         .lineLimit(1)
                     Spacer(minLength: 0)
@@ -490,6 +527,7 @@ struct TodayView: View {
                 } else {
                     Text("Nothing planned")
                         .font(.synText(15, weight: .medium))
+                        .kerning(-0.15)
                         .foregroundStyle(SYN.text)
                     Spacer(minLength: 0)
                     Text("Plan tomorrow →")
@@ -507,7 +545,7 @@ struct TodayView: View {
         if let session = store.lastSession, let note = store.lastNote {
             wideCard(
                 title: "Last note · \(session.date.relativeDayLabel(today: today)) · \(session.type.title)",
-                height: 64,
+                height: TodayLayout.wide,
                 action: { openLog(session) }
             ) {
                 Text(note)
@@ -517,19 +555,13 @@ struct TodayView: View {
                     .truncationMode(.tail)
             }
         } else {
-            // Active prompt: reads as a tap target, not a disabled state.
-            // Opens today's session (or a fresh one) at Notes, focused.
-            wideCard(title: "Last note", height: 64, action: { openLog(store.heroSession(today: today), focusNotes: true) }) {
-                HStack(spacing: Spacing.s) {
-                    Text("Tap to add a note to today's session.")
-                        .font(.synText(14))
-                        .foregroundStyle(SYN.textDim)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(SYN.cyan)
-                }
+            // Same slot and height as a note. Opens today's session (or a
+            // fresh one) at Notes, focused.
+            wideCard(title: "Last note", height: TodayLayout.wide, action: { openLog(store.heroSession(today: today), focusNotes: true) }) {
+                Text("Tap to add a note to today's session.")
+                    .font(.synText(14))
+                    .foregroundStyle(SYN.textDim)
+                    .lineLimit(1)
             }
         }
     }
@@ -541,8 +573,7 @@ struct TodayView: View {
         let lifts = store.liftsThisWeek(today: today)
         let volume = Int(store.volumeThisWeek(today: today).rounded())
         return VStack(alignment: .leading, spacing: Spacing.s) {
-            EyebrowText(text: "This week")
-                .foregroundStyle(SYN.textDim)
+            eyebrow("This week")
             HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
                 stat(climbs.formatted(), climbs == 1 ? "climb" : "climbs")
                 separator
@@ -553,7 +584,7 @@ struct TodayView: View {
         }
         .padding(.horizontal, Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 60)
+        .frame(height: TodayLayout.stats)
         .todayCard()
         .accessibilityElement(children: .combine)
     }
@@ -584,9 +615,7 @@ struct TodayView: View {
     ) -> some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: Spacing.s) {
-                EyebrowText(text: title)
-                    .foregroundStyle(SYN.textDim)
-                    .lineLimit(1)
+                eyebrow(title)
                 content()
             }
             .padding(.horizontal, Spacing.md)
@@ -596,13 +625,44 @@ struct TodayView: View {
         }
         .buttonStyle(.plain)
     }
+
+    /// Today's eyebrow: Geist 600 11, tracking 0.14em, textDim. Tighter
+    /// than the shared EyebrowText, per the mockup.
+    private func eyebrow(_ text: String) -> some View {
+        Text(text)
+            .font(.synText(11, weight: .semibold))
+            .tracking(TodayLayout.eyebrowTracking)
+            .textCase(.uppercase)
+            .foregroundStyle(SYN.textDim)
+            .lineLimit(1)
+    }
+}
+
+// MARK: - Layout
+
+/// Fixed heights and gaps from the "Today Final" mockup (pt). With the 85pt
+/// tab bar they add up to 852.
+private enum TodayLayout {
+    /// Header top from the screen top: the mockup's 50pt status bar plus 12.
+    static let headerTop: CGFloat = 62
+    static let header: CGFloat = 48
+    static let strip: CGFloat = 78
+    static let hero: CGFloat = 160
+    static let pair: CGFloat = 95
+    static let wide: CGFloat = 64
+    static let stats: CGFloat = 60
+    static let heroGap: CGFloat = 26
+    static let tabBarGap: CGFloat = 26
+    static let stripInset: CGFloat = 18
+    /// 0.14em at 11pt.
+    static let eyebrowTracking: CGFloat = 1.54
 }
 
 // MARK: - Day cell
 
 /// One day in the strip: letter, date, and one indicator for what happened.
-/// Logged climb is a filled dot, logged lift an outlined circle, logged rest
-/// a muted dot, a plan a dashed circle; nothing means untouched.
+/// Logged climb is a filled dot, logged lift a cyan ring, logged rest a
+/// muted dot, a plan a dashed ring; nothing means untouched.
 private struct DayCell: View {
     let day: Date
     let today: Date
@@ -626,21 +686,25 @@ private struct DayCell: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: Spacing.xs) {
+            VStack(spacing: 5) {
                 Text(day.formatted(.dateTime.weekday(.narrow)))
                     .font(.synText(11, weight: .medium))
                     .foregroundStyle(SYN.textDim)
+                    .frame(height: 13)
                 Text(day.formatted(.dateTime.day()))
                     .font(.synMono(15, weight: isToday ? .medium : .regular))
                     .foregroundStyle(isToday ? SYN.cyan : isFuture ? SYN.textDim : SYN.text)
+                    .frame(height: 15)
                 indicator
                     .frame(width: 6, height: 6)
             }
-            .padding(.vertical, Spacing.s)
+            // The mockup's 7/8 padding plus its 1pt border.
+            .padding(.top, 8)
+            .padding(.bottom, 9)
             .frame(maxWidth: .infinity)
             .overlay(
                 RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                    .stroke(isToday ? SYN.cyan.opacity(0.5) : .clear, lineWidth: 1)
+                    .strokeBorder(isToday ? SYN.cyan.opacity(0.5) : .clear, lineWidth: 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
         }
@@ -659,7 +723,7 @@ private struct DayCell: View {
         case .lift:
             Circle().strokeBorder(SYN.cyan, lineWidth: 1.5)
         case .rest:
-            Circle().fill(SYN.textFaint.opacity(0.6))
+            Circle().fill(SYN.restDot)
         case .planned:
             Circle()
                 .inset(by: 0.75)
@@ -677,6 +741,31 @@ private struct DayCell: View {
     }
 }
 
+// MARK: - Hero glyph
+
+/// The hero tile's line icon: the mockup's mountain for climbs, SF line
+/// symbols for lift and rest, a plus when nothing is planned.
+private struct TypeGlyph: View {
+    let type: SessionType?
+
+    var body: some View {
+        switch type {
+        case .climb:
+            LineGlyph(kind: .mountain, size: 22)
+        case .lift:
+            symbol("dumbbell")
+        case .rest:
+            symbol("moon")
+        case nil:
+            symbol("plus")
+        }
+    }
+
+    private func symbol(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.system(size: 18, weight: .regular))
+    }
+}
 // MARK: - Targets
 
 private struct TodayPlanTarget: Identifiable {
@@ -699,18 +788,27 @@ private struct DayChoice: Identifiable {
     var id: Date { day }
 }
 
-// MARK: - Card style
+// MARK: - Styles
+
+/// Dims the hero button while pressed.
+private struct PressDimStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.85 : 1)
+    }
+}
 
 private extension View {
+    /// Every Today card: SYN.card fill with a 0.5pt inner border.
     func todayCard() -> some View {
         self
             .background(
                 RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                    .fill(SYN.surface)
+                    .fill(SYN.card)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                    .stroke(SYN.border, lineWidth: 0.5)
+                    .strokeBorder(SYN.border, lineWidth: 0.5)
             )
     }
 }

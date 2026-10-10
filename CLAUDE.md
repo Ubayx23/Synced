@@ -173,8 +173,10 @@ Entry and routing:
   `markSignedIn()`, `signOut()`.
 
 Main app (Features/):
-- MainTabView (App/): Today and Progress tabs, in that order, with line
-  icons. Each tab's header has the profile icon that opens ProfileSheet.
+- MainTabView (App/): Today and Progress tabs, in that order. TabView
+  keeps tab state with its native bar hidden; SyncedTabBar draws the
+  designed bar (SYN.tabBar fill, LineGlyph icons). Each tab's header opens
+  ProfileSheet (on Today, the initials avatar).
 - Today/: TodayView and TodayStore. TodayStore wraps a WeekStore loading
   this week through tomorrow, plus `WeekStore.lastLogged` for the most
   recent logged session; the caption ("N of 7 trained", days with a
@@ -232,7 +234,7 @@ Shared helpers:
 Shared UI to reuse:
 - Components/: ScreenShell, ProgressHeader, PrimaryButton, SecondaryButton,
   TextLinkButton, SpecInput, SelectableCard, PhaseReveal (.phaseFadeUp),
-  LuminousOrb, FlowLayout
+  LuminousOrb, FlowLayout, LineGlyph (24pt line icons from the mockup)
 - DesignSystem/: Tokens (SYN.*, Spacing, Radius), Typography (synDisplay,
   synText, synMono, EyebrowText), Atmosphere, Wordmark
 
