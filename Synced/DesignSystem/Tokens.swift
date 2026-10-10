@@ -32,6 +32,12 @@ enum SYN {
     static let amber       = Color(hex: 0xF59E0B)
     static let green       = Color(hex: 0x22C55E)
     static let bronze      = Color(hex: 0xCD7F32)
+    /// Fill for every card on Today; one step darker than surface.
+    static let card        = Color(hex: 0x141416)
+    /// The custom tab bar's fill.
+    static let tabBar      = Color(hex: 0x111113)
+    /// Logged rest day indicator in the Today strip.
+    static let restDot     = Color(hex: 0x3A3A3E)
 
     // Recovery anatomy: one hue, brightness carries state. Cyan means ready,
     // dimmer cyan means recovering, gray means just worked.
