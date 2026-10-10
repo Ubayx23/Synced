@@ -1,8 +1,9 @@
 import SwiftUI
 import UIKit
 
-/// Signed-in root: Week, Recovery, and Progress. Each tab owns its own
-/// header with the profile icon, so Profile opens from any of them.
+/// Signed-in root: Today and Progress. Each tab owns its own header with
+/// the profile icon, so Profile opens from either. Week planning lives in
+/// Today's day strip, and Recovery opens as a sheet from Today.
 struct MainTabView: View {
     init() {
         let appearance = UITabBarAppearance()
@@ -37,30 +38,25 @@ struct MainTabView: View {
         UITabBar.appearance().scrollEdgeAppearance = appearance
     }
 
-    private enum Tab { case week, recovery, progress }
+    private enum Tab { case today, progress }
 
-    @State private var tab: Tab = .week
+    @State private var tab: Tab = .today
     @State private var router = AppRouter.shared
 
     var body: some View {
         TabView(selection: $tab) {
-            WeekView()
-                .tabItem { Label("Week", systemImage: "calendar") }
-                .tag(Tab.week)
-
-            // Middle, next to planning, so recovery informs the week.
-            RecoveryView()
-                .tabItem { Label("Recovery", systemImage: "figure.arms.open") }
-                .tag(Tab.recovery)
+            TodayView()
+                .tabItem { Label("Today", systemImage: "smallcircle.filled.circle") }
+                .tag(Tab.today)
 
             ProgressScreen()
-                .tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }
+                .tabItem { Label("Progress", systemImage: "chart.bar") }
                 .tag(Tab.progress)
         }
         .tint(SYN.cyan)
-        // A tapped reminder lands on Week, which opens the Log sheet.
+        // A tapped reminder lands on Today, which opens the Log sheet.
         .onChange(of: router.pendingLogFromReminder) { _, pending in
-            if pending { tab = .week }
+            if pending { tab = .today }
         }
     }
 }

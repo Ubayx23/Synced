@@ -65,4 +65,8 @@ enum Radius {
     static let card:   CGFloat = 16
     static let input:  CGFloat = 14
     static let pill:   CGFloat = 999
+    /// The Today hero card, one step rounder than other cards.
+    static let hero:   CGFloat = 20
+    /// Icon tiles and day cells in the Today strip.
+    static let tile:   CGFloat = 12
 }
