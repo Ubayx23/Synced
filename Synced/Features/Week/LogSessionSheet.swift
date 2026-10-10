@@ -61,14 +61,14 @@ struct LogSessionSheet: View {
         guard !muscles.isEmpty else { return [] }
         // History is newest first, so the earliest spelling is the last one seen.
         var firstSpelling: [String: String] = [:]
-        for use in exerciseHistory.reversed() where firstSpelling[use.name.exerciseKey] == nil {
-            firstSpelling[use.name.exerciseKey] = use.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        for use in exerciseHistory.reversed() where firstSpelling[use.name.exerciseMatchKey] == nil {
+            firstSpelling[use.name.exerciseMatchKey] = use.name.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         var seen = Set<String>()
         return exerciseHistory.compactMap { use in
             let matched = MuscleGroup.allCases.filter { muscles.contains($0) && use.muscles.contains($0) }
             guard let muscle = matched.first else { return nil }
-            let key = use.name.exerciseKey
+            let key = use.name.exerciseMatchKey
             guard !key.isEmpty, !hiddenSuggestions.contains(key), seen.insert(key).inserted else { return nil }
             return ExerciseSuggestion(name: firstSpelling[key] ?? use.name, muscle: muscle, sets: use.sets)
         }
