@@ -17,7 +17,7 @@ extension String {
     /// Canonical key for matching exercise names: trimmed and lowercased, so
     /// "Curls", "CURLS", and "curls " are one exercise. Stored names are
     /// never rewritten; this only affects grouping, matching, and suggestions.
-    var exerciseKey: String {
+    var exerciseMatchKey: String {
         trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }
@@ -93,12 +93,12 @@ final class ProgressStore {
     /// the same way the trend grouping does. Reads the already-fetched
     /// sessions only; no network call.
     func recentTopSets(for exerciseName: String, limit: Int = 7) -> [SessionTopSet] {
-        let key = exerciseName.exerciseKey
+        let key = exerciseName.exerciseMatchKey
         var recent: [SessionTopSet] = []
         // Newest first by date, not by fetch order.
         for session in sessions.sorted(by: { $0.date > $1.date }) where session.type == .lift {
             let tops = session.exercises
-                .filter { $0.name.exerciseKey == key }
+                .filter { $0.name.exerciseMatchKey == key }
                 .compactMap(\.topSet)
             guard let top = tops.max(by: { ($0.weightLbs, $0.reps) < ($1.weightLbs, $1.reps) }) else { continue }
             recent.append(SessionTopSet(id: session.id, date: session.date, top: top))
@@ -169,36 +169,7 @@ private struct ProgressRow: Decodable {
 
 // MARK: - Aggregation
 
-enum ProgressWindow: CaseIterable, Identifiable {
-    case last30, allTime
-
-    var id: Self { self }
-
-    var title: String {
-        switch self {
-        case .last30:  return "Last 30 days"
-        case .allTime: return "All time"
-        }
-    }
-}
-
-/// Top grade sent on one day.
-struct GradePoint: Identifiable {
-    let date: Date
-    let grade: Int
-    var id: Date { date }
-}
-
-struct ExercisePoint: Identifiable {
-    let date: Date
-    /// Heaviest set that session; drives the headline set.
-    let set: LiftSet
-    /// Final set that session; drives the session-over-session comparison.
-    let lastSet: LiftSet
-    var id: Date { date }
-}
-
-/// Last set of the latest session against the last set of the one before.
+/// Change between two sets of the same exercise.
 struct SessionDelta {
     enum Tone { case up, down, mixed, same }
 
@@ -231,30 +202,6 @@ struct SessionDelta {
     }
 }
 
-struct ExerciseTrend: Identifiable {
-    let name: String
-    /// Oldest first.
-    let points: [ExercisePoint]
-    var id: String { name.exerciseKey }
-    var latest: ExercisePoint { points[points.count - 1] }
-    var first: ExercisePoint { points[0] }
-    var previous: ExercisePoint? { points.count >= 2 ? points[points.count - 2] : nil }
-
-    /// nil until there are two sessions to compare.
-    var sessionDelta: SessionDelta? {
-        guard let previous else { return nil }
-        return SessionDelta(
-            weight: latest.lastSet.weightLbs - previous.lastSet.weightLbs,
-            reps: latest.lastSet.reps - previous.lastSet.reps,
-            bodyweight: latest.lastSet.isBodyweight && previous.lastSet.isBodyweight
-        )
-    }
-
-    /// Latest session came in lighter or for fewer reps, with nothing better.
-    var isDowntrend: Bool { sessionDelta?.tone == .down }
-    var isUptrend: Bool { sessionDelta?.tone == .up }
-}
-
 /// One session's heaviest set for an exercise, for the mini bar chart.
 struct SessionTopSet: Identifiable {
     /// Session id.
@@ -273,262 +220,166 @@ extension Array where Element == SessionTopSet {
     }
 }
 
-/// Everything the Progress screen shows, derived from one fetch for a window.
-struct ProgressSummary {
-    let window: ProgressWindow
+/// First send at a grade, for the milestone list under the pyramid.
+struct GradeMilestone: Identifiable {
+    let grade: Int
+    let date: Date
+    var id: Int { grade }
+}
 
-    // Climb
-    let hasClimbs: Bool
-    /// Any climb session at all, in or out of the window.
+/// One session's sets for one exercise, for the history view.
+struct ExerciseSessionSets: Identifiable {
+    /// Session id.
+    let id: UUID
+    let date: Date
+    let sets: [LiftSet]
+
+    /// The set with the most weight times reps; ties go to the heavier set.
+    /// Bodyweight sets (0 lbs) compare by reps.
+    var top: LiftSet? {
+        sets.max { $0.effort == $1.effort ? $0.weightLbs < $1.weightLbs : $0.effort < $1.effort }
+    }
+}
+
+/// Every logged session of one exercise, matched by `exerciseMatchKey`.
+struct ExerciseHistory: Identifiable {
+    /// Casing from the first time the exercise was logged.
+    let name: String
+    /// Newest first.
+    let sessions: [ExerciseSessionSets]
+    var id: String { name.exerciseMatchKey }
+
+    var latest: ExerciseSessionSets? { sessions.first }
+    var previous: ExerciseSessionSets? { sessions.count >= 2 ? sessions[1] : nil }
+}
+
+/// An exercise whose latest top set beat the previous session's.
+struct ExerciseImprovement: Identifiable {
+    let history: ExerciseHistory
+    let previous: LiftSet
+    let current: LiftSet
+    var id: String { history.id }
+
+    var delta: SessionDelta {
+        SessionDelta(
+            weight: current.weightLbs - previous.weightLbs,
+            reps: current.reps - previous.reps,
+            bodyweight: current.isBodyweight && previous.isBodyweight
+        )
+    }
+
+    /// For sorting: growth in weight times reps, bodyweight counted as 1 lb.
+    var size: Double { current.effort - previous.effort }
+}
+
+/// Everything the Progress screen shows, derived from one fetch.
+struct ProgressReport {
+    // Climbing
+    let topGradeThisMonth: Int?
+    let topGradeLastMonth: Int?
     let hasClimbedEver: Bool
-    let topGrade: Int?
-    let comparison: String?
-    /// Oldest first, one point per day with climbing. Feeds the headline.
-    let gradePoints: [GradePoint]
-    /// Lift cards show the latest top set, rather than a before and after
-    /// line, from this many sessions on.
-    static let minChartPoints = 3
-    /// Most recent point sits below an earlier peak.
-    let climbDowntrend: Bool
-    /// Grade and count, highest grade first.
+    /// Grade and count across all time, highest grade first.
     let sendCounts: [(grade: Int, count: Int)]
+    /// Newest first, at most five.
+    let milestones: [GradeMilestone]
 
     // Lifts
-    let hasLifts: Bool
-    /// Exercises with two or more points; single-point exercises are omitted.
-    let trends: [ExerciseTrend]
+    /// Biggest improvement first.
+    let improving: [ExerciseImprovement]
+    /// Most recently logged first.
+    let recentLifts: [ExerciseHistory]
 
-    /// One-line answer to "how am I doing"; nil when nothing was ever logged.
-    let hero: ProgressHero?
-
-    // Overall (fixed periods, not the window)
-    let sessionsThisMonth: Int
-    let sessionsThisWeek: Int
-    let restDaysThisWeek: Int
-
-    init(sessions: [LoggedSession], window: ProgressWindow, now: Date = Date()) {
+    init(sessions: [LoggedSession], now: Date = Date()) {
         let cal = WeekStore.calendar
         let today = cal.startOfDay(for: now)
-        let windowStart: Date? = window == .last30
-            ? cal.date(byAdding: .day, value: -29, to: today)
-            : nil
-        let inWindow = sessions.filter { s in windowStart.map { s.date >= $0 } ?? true }
-        self.window = window
+        let past = sessions.filter { $0.date <= today }
 
-        func weekStart(_ date: Date) -> Date {
-            cal.dateInterval(of: .weekOfYear, for: date)?.start ?? cal.startOfDay(for: date)
-        }
-
-        // Climb
-        let climbs = inWindow.filter { $0.type == .climb && !$0.grades.isEmpty }
-        hasClimbs = !climbs.isEmpty
-        hasClimbedEver = sessions.contains { $0.type == .climb }
-        let top = climbs.flatMap(\.grades).max()
-        topGrade = top
-
-        let prevStart = cal.date(byAdding: .day, value: -59, to: today) ?? today
-        let prevTop = sessions
-            .filter { $0.type == .climb && $0.date >= prevStart && $0.date < (windowStart ?? today) }
-            .flatMap(\.grades)
-            .max()
-
-        if let top {
-            switch window {
-            case .last30:
-                if let prevTop {
-                    let delta = top - prevTop
-                    if delta > 0 {
-                        comparison = "+\(delta) \(delta == 1 ? "grade" : "grades") from last month"
-                    } else if delta == 0 {
-                        comparison = "Same as last month"
-                    } else {
-                        comparison = "\(delta) from last month"
-                    }
-                } else {
-                    comparison = "No climbs logged the month before"
-                }
-            case .allTime:
-                let firstSent = climbs.filter { $0.grades.contains(top) }.map(\.date).min()
-                comparison = firstSent.map {
-                    "First sent \($0.formatted(.dateTime.month(.abbreviated).day().year()))"
-                }
-            }
-        } else {
-            comparison = nil
-        }
-
-        let byDay = Dictionary(grouping: climbs, by: { cal.startOfDay(for: $0.date) })
-        gradePoints = byDay
-            .compactMap { day, list in list.flatMap(\.grades).max().map { GradePoint(date: day, grade: $0) } }
-            .sorted { $0.date < $1.date }
-
-        let thisWeek = weekStart(today)
-
-        if let last = gradePoints.last, gradePoints.count >= 2 {
-            let earlierPeak = gradePoints.dropLast().map(\.grade).max() ?? last.grade
-            climbDowntrend = last.grade < earlierPeak
-        } else {
-            climbDowntrend = false
-        }
-
+        // Climbing: calendar months.
+        let monthStart = cal.dateInterval(of: .month, for: today)?.start ?? today
+        let lastMonthStart = cal.date(byAdding: .month, value: -1, to: monthStart) ?? monthStart
+        let climbs = past.filter { $0.type == .climb }
+        hasClimbedEver = !climbs.isEmpty
+        topGradeThisMonth = climbs.filter { $0.date >= monthStart }.flatMap(\.grades).max()
+        topGradeLastMonth = climbs.filter { $0.date >= lastMonthStart && $0.date < monthStart }.flatMap(\.grades).max()
         sendCounts = Dictionary(grouping: climbs.flatMap(\.grades), by: { $0 })
             .map { (grade: $0.key, count: $0.value.count) }
             .sorted { $0.grade > $1.grade }
 
-        // Lifts
-        let lifts = inWindow.filter { $0.type == .lift }
-        hasLifts = !lifts.isEmpty
+        var firstSent: [Int: Date] = [:]
+        for climb in climbs {
+            for grade in climb.grades where firstSent[grade].map({ climb.date < $0 }) ?? true {
+                firstSent[grade] = climb.date
+            }
+        }
+        milestones = firstSent
+            .map { GradeMilestone(grade: $0.key, date: $0.value) }
+            .sorted { $0.date == $1.date ? $0.grade > $1.grade : $0.date > $1.date }
+            .prefix(5)
+            .map { $0 }
 
-        // Display casing is the first time the name was ever logged, across
-        // all time, not just this window. Sessions arrive newest first (by
-        // scheduled_date, then created_at), so walk them in reverse.
+        // Lifts, grouped by exerciseMatchKey. Sessions arrive newest first.
+        let lifts = past.filter { $0.type == .lift }
         var displayName: [String: String] = [:]
-        for session in sessions.reversed() where session.type == .lift {
-            for exercise in session.exercises where displayName[exercise.name.exerciseKey] == nil {
-                displayName[exercise.name.exerciseKey] = exercise.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        for session in lifts.reversed() {
+            for exercise in session.exercises where displayName[exercise.name.exerciseMatchKey] == nil {
+                displayName[exercise.name.exerciseMatchKey] = exercise.name.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
-
-        var grouped: [String: (name: String, points: [ExercisePoint])] = [:]
+        var order: [String] = []
+        var grouped: [String: [ExerciseSessionSets]] = [:]
         for session in lifts {
-            for exercise in session.exercises {
-                let key = exercise.name.exerciseKey
-                guard !key.isEmpty, let set = exercise.topSet, let last = exercise.sets.last else { continue }
-                var entry = grouped[key] ?? (name: displayName[key] ?? exercise.name, points: [])
-                let point = ExercisePoint(date: session.date, set: set, lastSet: last)
-                // One point per day: keep the session with the heavier top set.
-                if let i = entry.points.firstIndex(where: { cal.isDate($0.date, inSameDayAs: session.date) }) {
-                    if (set.weightLbs, set.reps) > (entry.points[i].set.weightLbs, entry.points[i].set.reps) {
-                        entry.points[i] = point
-                    }
-                } else {
-                    entry.points.append(point)
-                }
-                grouped[key] = entry
+            // An exercise listed twice in one session counts as one entry.
+            var bySession: [String: [LiftSet]] = [:]
+            var sessionOrder: [String] = []
+            for exercise in session.exercises where !exercise.sets.isEmpty {
+                let key = exercise.name.exerciseMatchKey
+                guard !key.isEmpty else { continue }
+                if bySession[key] == nil { sessionOrder.append(key) }
+                bySession[key, default: []] += exercise.sets
+            }
+            for key in sessionOrder {
+                if grouped[key] == nil { order.append(key) }
+                grouped[key, default: []].append(
+                    ExerciseSessionSets(id: session.id, date: session.date, sets: bySession[key] ?? [])
+                )
             }
         }
-        let all = grouped.values
-            .map { ExerciseTrend(name: $0.name, points: $0.points.sorted { $0.date < $1.date }) }
-            .sorted { $0.latest.date > $1.latest.date }
-        trends = all.filter { $0.points.count >= 2 }
-
-        // Hero
-        let climbDelta: Int?
-        switch window {
-        case .last30:
-            climbDelta = top.flatMap { t in prevTop.map { t - $0 } }
-        case .allTime:
-            // No previous window: compare the latest climbing day with the
-            // earlier peak, or with the first day when still climbing.
-            if let last = gradePoints.last, let first = gradePoints.first, gradePoints.count >= 2 {
-                let earlierPeak = gradePoints.dropLast().map(\.grade).max() ?? last.grade
-                climbDelta = last.grade < earlierPeak ? last.grade - earlierPeak : (top ?? last.grade) - first.grade
-            } else {
-                climbDelta = nil
-            }
+        let histories = order.map { key in
+            ExerciseHistory(name: displayName[key] ?? key, sessions: grouped[key] ?? [])
         }
-        hero = ProgressHero(
-            everLogged: !sessions.isEmpty,
-            sessionsInWindow: inWindow.count,
-            window: window,
-            topGrade: top,
-            previousTop: prevTop,
-            climbDelta: climbDelta,
-            trends: trends
-        )
+        recentLifts = histories
 
-        // Overall
-        let monthStart = cal.dateInterval(of: .month, for: today)?.start ?? today
-        sessionsThisMonth = sessions.filter { $0.date >= monthStart && $0.date <= now }.count
-        let weekSessions = sessions.filter { $0.date >= thisWeek && $0.date <= now }
-        sessionsThisWeek = weekSessions.count
-        restDaysThisWeek = Set(weekSessions.filter { $0.type == .rest }.map { cal.startOfDay(for: $0.date) }).count
+        improving = histories
+            .compactMap { history -> ExerciseImprovement? in
+                guard
+                    let current = history.latest?.top,
+                    let previous = history.previous?.top,
+                    current.isImprovement(over: previous)
+                else { return nil }
+                return ExerciseImprovement(history: history, previous: previous, current: current)
+            }
+            .sorted { $0.size > $1.size }
     }
 }
 
-/// The single headline at the top of Progress. Rules are checked in a fixed
-/// order so exactly one applies: nothing logged (no hero), too little data,
-/// a dip, moving forward, then holding steady. Dip is checked before moving
-/// forward so a regression is never hidden behind a mixed picture.
-struct ProgressHero {
-    enum Tone { case early, forward, steady, dip }
+extension LiftSet {
+    /// Weight times reps, with bodyweight counted as 1 lb so reps still count.
+    var effort: Double { (isBodyweight ? 1 : weightLbs) * Double(reps) }
 
-    let tone: Tone
-    let headline: String
-    let support: String
+    /// More weight at the same or more reps, or more reps at the same or
+    /// more weight. Flat or traded-off sets are not improvements.
+    func isImprovement(over previous: LiftSet) -> Bool {
+        (weightLbs > previous.weightLbs && reps >= previous.reps)
+            || (reps > previous.reps && weightLbs >= previous.weightLbs)
+    }
 
-    static let minSessions = 3
-
-    init?(
-        everLogged: Bool,
-        sessionsInWindow: Int,
-        window: ProgressWindow,
-        topGrade: Int?,
-        previousTop: Int?,
-        climbDelta: Int?,
-        trends: [ExerciseTrend]
-    ) {
-        guard everLogged else { return nil }
-
-        guard sessionsInWindow >= Self.minSessions else {
-            tone = .early
-            headline = "Log a few more sessions."
-            support = "Your progress picture fills in after \(Self.minSessions)+ sessions."
-            return
-        }
-
-        let ups = trends.filter(\.isUptrend).count
-        let downs = trends.filter(\.isDowntrend).count
-        let count = trends.count
-        let liftsDown = count > 0 && downs * 2 > count
-        let liftsUp = count > 0 && ups * 2 >= count
-        let delta = climbDelta ?? 0
-        let monthly = window == .last30
-
-        func lifts(_ n: Int) -> String { n == 1 ? "lift" : "lifts" }
-        func grades(_ n: Int) -> String { n == 1 ? "grade" : "grades" }
-
-        if delta < 0 || liftsDown {
-            tone = .dip
-            headline = "You're in a dip."
-            var parts: [String] = []
-            if delta < 0 {
-                parts.append(monthly
-                    ? "Top grade down \(-delta) from last month."
-                    : "Latest top grade is \(-delta) below your peak.")
-            }
-            if downs > 0 {
-                parts.append("\(downs) \(lifts(downs)) trending lighter.")
-            }
-            if liftsDown { parts.append("Might be time to deload.") }
-            support = parts.joined(separator: " ")
-        } else if delta > 0 || liftsUp {
-            tone = .forward
-            headline = "You're moving forward."
-            var parts: [String] = []
-            if delta > 0 { parts.append("+\(delta) climbing \(grades(delta))") }
-            if ups > 0 { parts.append("\(ups) of \(count) tracked \(lifts(count)) improving") }
-            support = parts.joined(separator: " and ") + "."
-        } else {
-            tone = .steady
-            headline = "You're holding steady."
-            var parts: [String] = []
-            if let topGrade {
-                if monthly, let previousTop, previousTop == topGrade {
-                    parts.append("V\(topGrade) top for the second month")
-                } else {
-                    parts.append("V\(topGrade) top \(monthly ? "this month" : "so far")")
-                }
-            }
-            if count > 0 {
-                parts.append(ups == 0 && downs == 0
-                    ? "\(count) tracked \(lifts(count)) unchanged"
-                    : "\(ups) up and \(downs) down across \(count) tracked \(lifts(count))")
-            }
-            support = parts.isEmpty
-                ? "Log climbs or track lift exercises to see which way you're heading."
-                : parts.joined(separator: ", ") + "."
-        }
+    /// "185 × 5", or "BW × 10", for compact set lists.
+    var compact: String {
+        if isBodyweight { return "BW × \(reps)" }
+        let weight = weightLbs.rounded() == weightLbs
+            ? String(Int(weightLbs))
+            : weightLbs.formatted(.number.precision(.fractionLength(1)))
+        return "\(weight) × \(reps)"
     }
 }
 

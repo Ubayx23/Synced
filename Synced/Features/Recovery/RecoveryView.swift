@@ -1,9 +1,14 @@
 import MuscleMap
 import SwiftUI
 
-/// Recovery tab: a front or back anatomy view where ready muscles glow cyan
-/// and recently worked ones turn gray. Read-only.
+/// Recovery: a front or back anatomy view where ready muscles glow cyan
+/// and recently worked ones turn gray. Read-only. Opens as a sheet from
+/// Today's Recovery card.
 struct RecoveryView: View {
+    /// Set when shown as a sheet: the header shows a close button in place
+    /// of the profile icon.
+    var onClose: (() -> Void)? = nil
+
     @State private var store = RecoveryStore()
     @State private var showingProfile = false
     @Environment(\.scenePhase) private var scenePhase
@@ -155,18 +160,34 @@ struct RecoveryView: View {
 
             Spacer()
 
-            // Same placement and hit target as the other tabs' icon.
-            Button { showingProfile = true } label: {
-                Image(systemName: "person.crop.circle")
-                    .font(.system(size: 22, weight: .regular))
-                    .foregroundStyle(SYN.textDim)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(SYN.textDim)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(SYN.surfaceHi))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(.vertical, -Spacing.m)
+                .padding(.trailing, -Spacing.m + 2)
+                .accessibilityLabel("Close")
+            } else {
+                // Same placement and hit target as the other tabs' icon.
+                Button { showingProfile = true } label: {
+                    Image(systemName: "person.crop.circle")
+                        .font(.system(size: 22, weight: .regular))
+                        .foregroundStyle(SYN.textDim)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.vertical, -Spacing.m)
+                .padding(.trailing, -Spacing.m + 2)
+                .accessibilityLabel("Profile")
             }
-            .buttonStyle(.plain)
-            .padding(.vertical, -Spacing.m)
-            .padding(.trailing, -Spacing.m + 2)
-            .accessibilityLabel("Profile")
         }
     }
 

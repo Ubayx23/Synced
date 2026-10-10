@@ -371,9 +371,9 @@ struct ExercisesEditor: View {
     /// Past exercises for the selected muscle groups, minus names already in
     /// this session. Hidden when there is no room to add another exercise.
     private var availableSuggestions: [ExerciseSuggestion] {
-        let hasEmptyCard = exercises.contains { $0.name.exerciseKey.isEmpty }
+        let hasEmptyCard = exercises.contains { $0.name.exerciseMatchKey.isEmpty }
         guard hasEmptyCard || exercises.count < Self.maxExercises else { return [] }
-        let taken = Set(exercises.map(\.name.exerciseKey))
+        let taken = Set(exercises.map(\.name.exerciseMatchKey))
         return suggestions
             .filter { !taken.contains($0.id) }
             .prefix(Self.maxSuggestions)
@@ -384,7 +384,7 @@ struct ExercisesEditor: View {
     /// exercise. Sets come from the last time it was logged unless the card
     /// already has numbers in it.
     private func addSuggested(_ suggestion: ExerciseSuggestion) {
-        if let i = exercises.lastIndex(where: { $0.name.exerciseKey.isEmpty }) {
+        if let i = exercises.lastIndex(where: { $0.name.exerciseMatchKey.isEmpty }) {
             let filled = ExerciseDraft(suggestion)
             exercises[i].name = filled.name
             exercises[i].muscle = filled.muscle

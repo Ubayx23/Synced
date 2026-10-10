@@ -68,7 +68,7 @@ struct ExerciseSuggestion: Identifiable, Equatable {
     let muscle: MuscleGroup?
     /// Sets from the most recent time it was logged, used to pre-fill.
     let sets: [LiftSet]
-    var id: String { name.exerciseKey }
+    var id: String { name.exerciseMatchKey }
 }
 
 /// Suggestion chips the user removed. Stored on this device per account;
@@ -86,14 +86,14 @@ enum HiddenExerciseSuggestions {
     static func hide(_ name: String) {
         guard let key else { return }
         var names = load()
-        names.insert(name.exerciseKey)
+        names.insert(name.exerciseMatchKey)
         UserDefaults.standard.set(Array(names), forKey: key)
     }
 
     static func unhide(_ names: [String]) {
         guard let key, !names.isEmpty else { return }
         let current = load()
-        let remaining = current.subtracting(names.map(\.exerciseKey))
+        let remaining = current.subtracting(names.map(\.exerciseMatchKey))
         if remaining != current {
             UserDefaults.standard.set(Array(remaining), forKey: key)
         }
@@ -264,6 +264,43 @@ final class WeekStore {
         guard !deleted.isEmpty else { throw DeleteError.notDeleted }
         sessions.removeAll { $0.id == session.id }
         Task { await ReminderScheduler.reschedule() }
+    }
+
+    /// Switches a planned session to another type in place. Logged
+    /// sessions are changed through the Log sheet instead.
+    @MainActor
+    func changeType(of session: Session, to type: SessionType) async throws {
+        let row: SessionRow = try await supabase
+            .from("sessions")
+            .update(["session_type": type.rawValue])
+            .eq("id", value: session.id.uuidString)
+            .select(SessionRow.columns)
+            .single()
+            .execute()
+            .value
+        if let updated = Self.session(from: row),
+           let index = sessions.firstIndex(where: { $0.id == updated.id }) {
+            sessions[index] = updated
+        }
+        Task { await ReminderScheduler.reschedule() }
+    }
+
+    /// The most recent logged (not planned) session on or before `day`, or
+    /// nil when there is none. Feeds the Last and Last Note cards on Today.
+    static func lastLogged(onOrBefore day: Date) async throws -> Session? {
+        let userID = try await supabase.auth.session.user.id
+        let rows: [SessionRow] = try await supabase
+            .from("sessions")
+            .select(SessionRow.columns)
+            .eq("user_id", value: userID.uuidString)
+            .eq("is_planned", value: false)
+            .lte("scheduled_date", value: dayFormatter.string(from: day))
+            .order("scheduled_date", ascending: false)
+            .order("created_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first.flatMap(session(from:))
     }
 
     enum DeleteError: LocalizedError {
