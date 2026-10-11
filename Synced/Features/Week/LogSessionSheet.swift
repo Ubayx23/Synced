@@ -17,7 +17,7 @@ struct LogSessionSheet: View {
     @State private var exercises: [ExerciseDraft]
     @State private var exerciseHistory: [ExerciseUse] = []
     @State private var historyLoaded = false
-    @State private var hiddenSuggestions = HiddenExerciseSuggestions.load()
+    private var hidden = HiddenExercises.shared
     @State private var rating: Int?
     @State private var notes: String
     @State private var isSaving = false
@@ -73,7 +73,7 @@ struct LogSessionSheet: View {
             let matched = MuscleGroup.allCases.filter { muscles.contains($0) && use.muscles.contains($0) }
             guard let muscle = matched.first else { return nil }
             let key = use.name.exerciseMatchKey
-            guard !key.isEmpty, !hiddenSuggestions.contains(key), seen.insert(key).inserted else { return nil }
+            guard !key.isEmpty, !hidden.keys.contains(key), seen.insert(key).inserted else { return nil }
             return ExerciseSuggestion(name: firstSpelling[key] ?? use.name, muscle: muscle, sets: use.sets)
         }
     }
@@ -124,8 +124,7 @@ struct LogSessionSheet: View {
                                     selectedMuscles: selectedMuscles,
                                     suggestions: exerciseSuggestions,
                                     onHideSuggestion: { suggestion in
-                                        HiddenExerciseSuggestions.hide(suggestion.name)
-                                        hiddenSuggestions.insert(suggestion.id)
+                                        Task { try? await HiddenExercises.shared.hide(suggestion.name) }
                                     },
                                     scrollProxy: proxy
                                 )
@@ -491,7 +490,7 @@ struct LogSessionSheet: View {
             do {
                 try await store.log(log)
                 // Logging an exercise again brings back a removed chip.
-                HiddenExerciseSuggestions.unhide(log.exercises.map(\.name))
+                try? await HiddenExercises.shared.unhide(log.exercises.map(\.name))
                 dismiss()
             } catch {
                 isSaving = false

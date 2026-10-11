@@ -117,7 +117,9 @@ A `handle_new_user()` trigger creates a profiles row (id and email) on every
 new auth.users insert.
 
 Tables:
-- profiles: id (FK auth.users), email, created_at, updated_at.
+- profiles: id (FK auth.users), email, created_at, updated_at,
+  hidden_exercises (text[], not null, default '{}'): exerciseMatchKeys the
+  user hid. Covered by the existing "Users own their profile" policy.
 - sessions: one row per planned or logged session (climb, lift, or rest).
 - leaderboard_entries, waitlist: exist but are unwired for MVP. Leave their
   schema alone. waitlist has no anon or authenticated grants; only the
@@ -202,7 +204,25 @@ Main app (Features/):
   profiles.created_at), ProgressReport (all aggregation, client side, per scope),
   ProgressCharts (GradeLineChart, ConsistencyGrid, Sparkline, drawn with
   Canvas and Path), and ProgressSheets (GradeBreakdownSheet,
-  LiftHistorySheet). Follows the "Progress v1" Claude Design mockup.
+  LiftHistorySheet, HiddenExercisesSheet). Follows the "Progress v1"
+  Claude Design mockup.
+  - Lift history sheet: up to 8 bars at a fixed 28pt width and 12pt
+    spacing, left aligned, heights scaled from 70% of the lowest e1RM in
+    view (tallest 92pt), "≈198" e1RM under each date. Change stat is the
+    e1RM difference ("+12 lbs est.", green up, amber down, dim "No
+    change"), with a dim "+10 lbs, -2 reps" line when weight and reps
+    moved opposite ways.
+  - Hide and delete: swipe a Lifts row, or the "..." menu on the lift
+    history sheet. Hide adds the exerciseMatchKey to
+    profiles.hidden_exercises (HiddenExercises in Week/, shared with the
+    Log sheet's suggestion chips); hidden exercises leave Improving, Lifts,
+    and suggestions, keep their history, and are listed under "Hidden (N)"
+    with Unhide. Logging a hidden exercise again unhides it. Delete, after
+    a confirmation, removes every matching entry from lift_exercises on
+    all of the user's sessions (ProgressStore.deleteExercise) without
+    deleting sessions, then unhides the key. The old per-device
+    UserDefaults list is merged into the account on first load and
+    removed.
   - Scope: 4W, 12W (default), or ALL (weeks since the first session, at
     least 4), whole Monday-start weeks ending this week. Rescopes
     everything except the hero number.
@@ -212,10 +232,12 @@ Main app (Features/):
     Dashed line at the all-time best, labeled in a right gutter. Dots on
     new all-time bests, tooltip on tap. Under 3 climbing weeks shows the
     empty state.
-  - Improving: latest top set in scope against the first top set in
-    scope. Top set is max weight times reps, ties to the heavier set,
-    bodyweight compared by reps. Improving means more weight at the same
-    or more reps, or more reps at the same or more weight.
+  - Scoring (everywhere progress is judged): estimated 1RM,
+    e1RM = weight × (1 + reps / 30); bodyweight sets (0 lbs) compare by
+    reps. A session's top set is its highest e1RM, ties to the heavier
+    set. Text always shows the real sets.
+  - Improving: exercises whose latest e1RM in scope is higher than their
+    first in scope. Sparklines plot e1RM.
   - Consistency: a cell per day (climb filled, lift outlined, rest gray,
     empty faint) from the user's start through today. Start is the
     earlier of profiles.created_at (ProgressStore reads it with the
@@ -226,7 +248,7 @@ Main app (Features/):
     range, then "N sessions · X per week". No sessions: "Your first
     session starts the grid." with today's cell outlined.
   - Lifts: exercises logged in scope, most recent first, trend arrow
-    against the previous session by weight times reps. Five, then Show
+    against the previous session by e1RM. Five, then Show
     all.
 - Recovery/: RecoveryView (MuscleMap front and back anatomy; ready muscles
   glow cyan, worked ones turn gray; tap a muscle for a label),
