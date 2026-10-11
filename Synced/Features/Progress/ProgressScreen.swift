@@ -26,7 +26,7 @@ struct ProgressScreen: View {
     }
 
     private var report: ProgressReport {
-        ProgressReport(sessions: store.sessions, scope: scope)
+        ProgressReport(sessions: store.sessions, scope: scope, accountCreated: store.accountCreated)
     }
 
     var body: some View {
@@ -386,32 +386,41 @@ struct ProgressScreen: View {
         VStack(alignment: .leading, spacing: Spacing.m) {
             eyebrow("Consistency")
             VStack(alignment: .leading, spacing: 0) {
-                consistencySummary(r)
-                ConsistencyGrid(report: r, width: width - Spacing.md * 2)
+                if r.hasNoSessions {
+                    Text("Your first session starts the grid.")
+                        .font(.synText(14))
+                        .foregroundStyle(SYN.textDim)
+                    ConsistencyFirstCell()
+                        .padding(.top, Spacing.md)
+                } else {
+                    consistencySummary(r)
+                    ConsistencyGrid(report: r, width: width - Spacing.md * 2)
+                        .padding(.top, Spacing.md)
+                    HStack(spacing: Spacing.md) {
+                        legend("Climb") { RoundedRectangle(cornerRadius: 3).fill(SYN.cyan) }
+                        legend("Lift") { RoundedRectangle(cornerRadius: 3).strokeBorder(SYN.cyan, lineWidth: 1.5) }
+                        legend("Rest") { RoundedRectangle(cornerRadius: 3).fill(SYN.restDot) }
+                    }
+                    .padding(.top, Spacing.m)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .overlay(alignment: .top) { Rectangle().fill(SYN.border).frame(height: 0.5) }
                     .padding(.top, Spacing.md)
-                HStack(spacing: Spacing.md) {
-                    legend("Climb") { RoundedRectangle(cornerRadius: 3).fill(SYN.cyan) }
-                    legend("Lift") { RoundedRectangle(cornerRadius: 3).strokeBorder(SYN.cyan, lineWidth: 1.5) }
-                    legend("Rest") { RoundedRectangle(cornerRadius: 3).fill(SYN.restDot) }
                 }
-                .padding(.top, Spacing.m)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .overlay(alignment: .top) { Rectangle().fill(SYN.border).frame(height: 0.5) }
-                .padding(.top, Spacing.md)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Spacing.md)
             .progressCard()
         }
     }
 
-    /// "18 sessions · 1.5 per week", or "2 sessions · since Oct 8" for a
-    /// new user.
+    /// "4 sessions since Oct 8" while history is shorter than the range,
+    /// then "18 sessions · 1.5 per week".
     private func consistencySummary(_ r: ProgressReport) -> some View {
         HStack(spacing: 5) {
             Text("\(r.sessionCount)").font(.synMono(14)).foregroundStyle(SYN.text)
-            if r.isNewUser, let first = r.firstSessionDate {
-                Text(r.sessionCount == 1 ? "session · since" : "sessions · since")
-                Text(first.shortDayLabel).font(.synMono(14)).foregroundStyle(SYN.text)
+            if r.showsSince {
+                Text(r.sessionCount == 1 ? "session since" : "sessions since")
+                Text(r.gridStart.shortDayLabel).font(.synMono(14)).foregroundStyle(SYN.text)
             } else {
                 Text(r.sessionCount == 1 ? "session ·" : "sessions ·")
                 Text(r.perWeek.formatted(.number.precision(.fractionLength(1)))).font(.synMono(14)).foregroundStyle(SYN.text)

@@ -198,8 +198,8 @@ Main app (Features/):
   CursorEndField, a UIKit UITextField bridge that keeps the cursor at the
   end on focus for the numeric set fields. WeekView is no longer mounted
   as a tab; the Plan and Log sheets and WeekStore are shared with Today.
-- Progress/: ProgressScreen, ProgressStore (one fetch of logged
-  sessions), ProgressReport (all aggregation, client side, per scope),
+- Progress/: ProgressScreen, ProgressStore (logged sessions plus
+  profiles.created_at), ProgressReport (all aggregation, client side, per scope),
   ProgressCharts (GradeLineChart, ConsistencyGrid, Sparkline, drawn with
   Canvas and Path), and ProgressSheets (GradeBreakdownSheet,
   LiftHistorySheet). Follows the "Progress v1" Claude Design mockup.
@@ -216,7 +216,15 @@ Main app (Features/):
     scope. Top set is max weight times reps, ties to the heavier set,
     bodyweight compared by reps. Improving means more weight at the same
     or more reps, or more reps at the same or more weight.
-  - Consistency: a cell per day (climb filled, lift outlined, rest gray).
+  - Consistency: a cell per day (climb filled, lift outlined, rest gray,
+    empty faint) from the user's start through today. Start is the
+    earlier of profiles.created_at (ProgressStore reads it with the
+    sessions) and the first logged session; 4W and 12W begin at the later
+    of that and the range start, ALL at the start. Days before the start
+    are not drawn. Under 4 weeks the cells are 28pt, easing to the fitted
+    size by 12 weeks. "N sessions since <start>" until history covers the
+    range, then "N sessions · X per week". No sessions: "Your first
+    session starts the grid." with today's cell outlined.
   - Lifts: exercises logged in scope, most recent first, trend arrow
     against the previous session by weight times reps. Five, then Show
     all.

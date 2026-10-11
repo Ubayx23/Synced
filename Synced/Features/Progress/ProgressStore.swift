@@ -86,7 +86,29 @@ final class ProgressStore {
     }
 
     private(set) var sessions: [LoggedSession] = []
+    /// The day the account was created, for where the Consistency grid
+    /// starts. Nil until loaded, or if the profile read fails.
+    private(set) var accountCreated: Date?
     private(set) var loadState: LoadState = .loading
+
+    /// profiles.created_at as a local start of day. A failure here only
+    /// moves the grid's start to the first session, so it is not an error.
+    private static func accountCreated(userID: UUID) async -> Date? {
+        struct Row: Decodable { let created_at: String }
+        guard let row: Row = try? await supabase
+            .from("profiles")
+            .select("created_at")
+            .eq("id", value: userID.uuidString)
+            .single()
+            .execute()
+            .value
+        else { return nil }
+        // Postgres sends microseconds, which ISO8601DateFormatter rejects;
+        // the day is all that matters, so drop the fraction.
+        let trimmed = row.created_at.replacingOccurrences(of: #"\.\d+"#, with: "", options: .regularExpression)
+        guard let date = ISO8601DateFormatter().date(from: trimmed) else { return nil }
+        return WeekStore.calendar.startOfDay(for: date)
+    }
 
     private static let log = Logger(subsystem: "page.synced.app", category: "ProgressStore")
 
@@ -104,6 +126,7 @@ final class ProgressStore {
                 .execute()
                 .value
             sessions = rows.compactMap(\.session)
+            accountCreated = await Self.accountCreated(userID: userID) ?? accountCreated
             loadState = .loaded
         } catch is CancellationError {
             // Interrupted by a refresh or view teardown; not a failure.

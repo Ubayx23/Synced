@@ -231,36 +231,60 @@ struct GradeLineEmpty: View {
 
 // MARK: - Consistency
 
-/// One cell per day, a column per week, Monday at the top. Climb filled
-/// cyan, lift a cyan outline, rest a gray square, empty days bare.
+/// One cell per day from the user's start (or the range start) through
+/// today, a column per Monday-start week, growing left to right. Climb
+/// filled cyan, lift a cyan outline, rest gray, an empty day a faint
+/// square. Days before the start and after today are not drawn. Under four
+/// weeks the cells are large; they shrink toward the fitted size until the
+/// grid is twelve weeks wide.
 struct ConsistencyGrid: View {
     let report: ProgressReport
     let width: CGFloat
 
     private let labelWidth: CGFloat = 14
     private let labelGap: CGFloat = 8
-    private var count: Int { report.weeks.count }
+    private var count: Int { report.gridWeeks.count }
+    private var available: CGFloat { width - labelWidth - labelGap }
 
-    private var gap: CGFloat { count > 16 ? 3 : count > 8 ? 5 : 6 }
-    private var cell: CGFloat {
-        let available = width - labelWidth - labelGap
-        let fit = (available - gap * CGFloat(count - 1)) / CGFloat(count)
+    private static func gap(columns: Int) -> CGFloat { columns > 16 ? 3 : columns > 8 ? 5 : 6 }
+
+    /// The cell that fits `columns` across, capped at 30.
+    private func fitted(columns: Int) -> CGFloat {
+        let gap = Self.gap(columns: columns)
+        let fit = (available - gap * CGFloat(columns - 1)) / CGFloat(columns)
         return min(30, (fit * 10).rounded(.down) / 10)
     }
+
+    private var gap: CGFloat { Self.gap(columns: count) }
+
+    /// 28 under four weeks, easing to the twelve-week fit by week twelve,
+    /// then fitted to the width.
+    private var cell: CGFloat {
+        let large: CGFloat = 28
+        if count < 4 { return large }
+        if count < 12 {
+            let t = CGFloat(count - 4) / 8
+            return (large + (fitted(columns: 12) - large) * t).rounded()
+        }
+        return fitted(columns: count)
+    }
+
     private var radius: CGFloat { cell >= 18 ? 5 : cell > 12 ? 4 : 2.5 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ZStack(alignment: .topLeading) {
-                ForEach(monthLabels, id: \.column) { label in
-                    Text(label.text)
-                        .font(.synText(10, weight: .medium))
-                        .foregroundStyle(SYN.textFaint)
-                        .fixedSize()
-                        .offset(x: labelWidth + labelGap + CGFloat(label.column) * (cell + gap))
+            if !monthLabels.isEmpty {
+                ZStack(alignment: .topLeading) {
+                    ForEach(monthLabels, id: \.column) { label in
+                        Text(label.text)
+                            .font(.synText(10, weight: .medium))
+                            .foregroundStyle(SYN.textFaint)
+                            .fixedSize()
+                            .offset(x: labelWidth + labelGap + CGFloat(label.column) * (cell + gap))
+                    }
                 }
+                .frame(height: 10, alignment: .topLeading)
             }
-            .frame(height: 10, alignment: .topLeading)
 
             VStack(alignment: .leading, spacing: gap) {
                 ForEach(0..<7, id: \.self) { row in
@@ -271,7 +295,7 @@ struct ConsistencyGrid: View {
                             .frame(width: labelWidth, alignment: .leading)
                         HStack(spacing: gap) {
                             ForEach(0..<count, id: \.self) { column in
-                                dayCell(mark(row: row, column: column))
+                                dayCell(row: row, column: column)
                             }
                         }
                     }
@@ -279,45 +303,64 @@ struct ConsistencyGrid: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(report.sessionCount) sessions in range")
+        .accessibilityLabel("\(report.sessionCount) sessions since \(report.gridStart.shortDayLabel)")
     }
 
-    private func mark(row: Int, column: Int) -> DayMark? {
+    private func day(row: Int, column: Int) -> Date? {
         let cal = WeekStore.calendar
-        guard let day = cal.date(byAdding: .day, value: row, to: report.weeks[column]) else { return nil }
-        return report.dayMarks[cal.startOfDay(for: day)]
+        return cal.date(byAdding: .day, value: row, to: report.gridWeeks[column]).map { cal.startOfDay(for: $0) }
     }
 
     @ViewBuilder
-    private func dayCell(_ mark: DayMark?) -> some View {
+    private func dayCell(row: Int, column: Int) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-        switch mark {
-        case .climb: shape.fill(SYN.cyan).frame(width: cell, height: cell)
-        case .lift:  shape.strokeBorder(SYN.cyan, lineWidth: 1.5).frame(width: cell, height: cell)
-        case .rest:  shape.fill(SYN.restDot).frame(width: cell, height: cell)
-        case nil:    Color.clear.frame(width: cell, height: cell)
+        if let day = day(row: row, column: column), report.isInGrid(day) {
+            switch report.dayMarks[day] {
+            case .climb: shape.fill(SYN.cyan).frame(width: cell, height: cell)
+            case .lift:  shape.strokeBorder(SYN.cyan, lineWidth: 1.5).frame(width: cell, height: cell)
+            case .rest:  shape.fill(SYN.restDot).frame(width: cell, height: cell)
+            case nil:    shape.fill(SYN.surfaceHi).frame(width: cell, height: cell)
+            }
+        } else {
+            Color.clear.frame(width: cell, height: cell)
         }
     }
 
     private struct MonthLabel { let column: Int; let text: String }
 
-    /// The month at each column where it changes, by the week's Thursday.
-    /// Past twelve weeks the last two columns stay unlabeled.
+    /// Only when the grid spans two or more months: the month at each
+    /// column where it changes, by the week's Thursday (or the first drawn
+    /// day, when that is later). Past twelve weeks the last two columns
+    /// stay unlabeled.
     private var monthLabels: [MonthLabel] {
         let cal = WeekStore.calendar
+        guard cal.component(.month, from: report.gridStart) != cal.component(.month, from: report.today)
+                || cal.component(.year, from: report.gridStart) != cal.component(.year, from: report.today)
+        else { return [] }
         var labels: [MonthLabel] = []
         var lastMonth = -1
-        for (column, start) in report.weeks.enumerated() {
+        for (column, start) in report.gridWeeks.enumerated() {
             let thursday = cal.date(byAdding: .day, value: 3, to: start) ?? start
-            let month = cal.component(.month, from: thursday)
+            let anchor = max(thursday, report.gridStart)
+            let month = cal.component(.month, from: anchor)
             if month != lastMonth {
                 if !(count > 12 && column > count - 3) {
-                    labels.append(MonthLabel(column: column, text: thursday.formatted(.dateTime.month(.abbreviated))))
+                    labels.append(MonthLabel(column: column, text: anchor.formatted(.dateTime.month(.abbreviated))))
                 }
                 lastMonth = month
             }
         }
         return labels
+    }
+}
+
+/// Zero sessions: one cell for today, outlined in cyan.
+struct ConsistencyFirstCell: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 5, style: .continuous)
+            .strokeBorder(SYN.cyan, lineWidth: 1.5)
+            .frame(width: 28, height: 28)
+            .accessibilityLabel("Today")
     }
 }
 

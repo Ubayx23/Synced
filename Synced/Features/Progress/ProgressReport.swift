@@ -141,17 +141,28 @@ struct ProgressReport {
     /// Every logged lift session, all time.
     let totalLiftSessions: Int
 
-    // Consistency
+    // Consistency: from the user's start (or the range start, if later)
+    // through today.
+    /// First day the grid draws.
+    let gridStart: Date
+    /// Monday-start weeks from gridStart's week through this week.
+    let gridWeeks: [Date]
     let dayMarks: [Date: DayMark]
-    /// Logged climbs and lifts in range; rest days don't count.
+    /// Logged climbs and lifts in the grid; rest days don't count.
     let sessionCount: Int
-    /// Five or fewer climbs and lifts ever: the summary reads "since <date>".
-    let isNewUser: Bool
-    let firstSessionDate: Date?
+    /// No logged session at all yet.
+    let hasNoSessions: Bool
+    /// History is shorter than the range: "N sessions since Oct 8".
+    let showsSince: Bool
 
-    var perWeek: Double { weeks.isEmpty ? 0 : Double(sessionCount) / Double(weeks.count) }
+    var perWeek: Double { gridWeeks.isEmpty ? 0 : Double(sessionCount) / Double(gridWeeks.count) }
 
-    init(sessions: [LoggedSession], scope: ProgressScope, now: Date = Date()) {
+    /// Whether a day is inside the grid: on or after gridStart, not after today.
+    func isInGrid(_ day: Date) -> Bool {
+        day >= gridStart && day <= today
+    }
+
+    init(sessions: [LoggedSession], scope: ProgressScope, accountCreated: Date? = nil, now: Date = Date()) {
         let cal = WeekStore.calendar
         let today = cal.startOfDay(for: now)
         self.scope = scope
@@ -275,9 +286,20 @@ struct ProgressReport {
             return LiftRow(history: history, latest: top, trend: trend)
         }
 
-        // Consistency.
+        // Consistency. The user started at the earlier of account creation
+        // and their first logged session, so back-logged sessions count.
+        let userStart = min(
+            [accountCreated.map { cal.startOfDay(for: $0) }, past.first?.date].compactMap { $0 }.min() ?? today,
+            today
+        )
+        let gridStart = scope == .all ? userStart : max(userStart, start)
+        self.gridStart = gridStart
+        let gridFirstWeek = cal.dateInterval(of: .weekOfYear, for: gridStart)?.start ?? gridStart
+        let gridWeekCount = (cal.dateComponents([.weekOfYear], from: gridFirstWeek, to: thisWeek).weekOfYear ?? 0) + 1
+        gridWeeks = (0..<max(1, gridWeekCount)).compactMap { cal.date(byAdding: .weekOfYear, value: $0, to: gridFirstWeek) }
+        let inGrid = past.filter { $0.date >= gridStart }
         var marks: [Date: DayMark] = [:]
-        for session in inRange {
+        for session in inGrid {
             let day = cal.startOfDay(for: session.date)
             switch (session.type, marks[day]) {
             case (.climb, _):           marks[day] = .climb
@@ -288,10 +310,16 @@ struct ProgressReport {
             }
         }
         dayMarks = marks
-        sessionCount = inRange.filter { $0.type != .rest }.count
-        let trained = past.filter { $0.type != .rest }
-        isNewUser = trained.count <= 5
-        firstSessionDate = trained.first?.date
+        sessionCount = inGrid.filter { $0.type != .rest }.count
+        hasNoSessions = past.isEmpty
+        switch scope {
+        case .all:
+            // ALL has no fixed length; under four weeks reads as "since".
+            let days = cal.dateComponents([.day], from: userStart, to: today).day ?? 0
+            showsSince = days < 28
+        case .fourWeeks, .twelveWeeks:
+            showsSince = userStart > start
+        }
     }
 }
 
