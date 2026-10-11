@@ -91,6 +91,41 @@ final class ProgressStore {
     private(set) var accountCreated: Date?
     private(set) var loadState: LoadState = .loading
 
+    /// Removes every entry matching `matchKey` from lift_exercises on all of
+    /// the user's sessions, planned or logged. The sessions themselves stay.
+    /// Other fields on each entry are written back untouched. Then unhides
+    /// the key, since nothing is left to hide, and reloads.
+    @MainActor
+    func deleteExercise(matchKey: String) async throws {
+        let userID = try await supabase.auth.session.user.id
+        struct Row: Decodable {
+            let id: UUID
+            let lift_exercises: [AnyJSON]?
+        }
+        let rows: [Row] = try await supabase
+            .from("sessions")
+            .select("id, lift_exercises")
+            .eq("user_id", value: userID.uuidString)
+            .not("lift_exercises", operator: .is, value: "null")
+            .execute()
+            .value
+        for row in rows {
+            guard let list = row.lift_exercises else { continue }
+            let kept = list.filter { entry in
+                entry.objectValue?["name"]?.stringValue?.exerciseMatchKey != matchKey
+            }
+            guard kept.count != list.count else { continue }
+            try await supabase
+                .from("sessions")
+                .update(["lift_exercises": AnyJSON.array(kept)])
+                .eq("id", value: row.id.uuidString)
+                .eq("user_id", value: userID.uuidString)
+                .execute()
+        }
+        try? await HiddenExercises.shared.unhide([matchKey])
+        await load()
+    }
+
     /// profiles.created_at as a local start of day. A failure here only
     /// moves the grid's start to the first session, so it is not an error.
     private static func accountCreated(userID: UUID) async -> Date? {

@@ -25,10 +25,10 @@ struct ExerciseSessionSets: Identifiable {
     let date: Date
     let sets: [LiftSet]
 
-    /// The set with the most weight times reps; ties go to the heavier set.
+    /// The set with the highest estimated 1RM; ties go to the heavier set.
     /// Bodyweight sets (0 lbs) compare by reps.
     var top: LiftSet? {
-        sets.max { $0.effort == $1.effort ? $0.weightLbs < $1.weightLbs : $0.effort < $1.effort }
+        sets.max { $0.score == $1.score ? $0.weightLbs < $1.weightLbs : $0.score < $1.score }
     }
 
     /// The top set, then the rest in logged order.
@@ -56,18 +56,19 @@ struct ExerciseHistory: Identifiable {
     }
 }
 
-/// A lift whose latest top set in range beat its first top set in range.
+/// A lift whose latest top set in range has a higher estimated 1RM than its
+/// first top set in range.
 struct LiftImprovement: Identifiable {
     let history: ExerciseHistory
     let first: LiftSet
     let latest: LiftSet
     let latestDate: Date
-    /// Top-set effort for up to the last six sessions in range, oldest first.
+    /// Top-set score for up to the last six sessions in range, oldest first.
     let spark: [Double]
     var id: String { history.id }
 
-    /// For sorting: growth in weight times reps, bodyweight counted as 1 lb.
-    var size: Double { latest.effort - first.effort }
+    /// For sorting: growth in estimated 1RM (reps for bodyweight).
+    var size: Double { latest.score - first.score }
 }
 
 /// Latest top set against the previous session's, for the Lifts list.
@@ -140,6 +141,8 @@ struct ProgressReport {
     let lifts: [LiftRow]
     /// Every logged lift session, all time.
     let totalLiftSessions: Int
+    /// Exercises the user hid, alphabetical. Left out of Improving and Lifts.
+    let hiddenHistories: [ExerciseHistory]
 
     // Consistency: from the user's start (or the range start, if later)
     // through today.
@@ -162,7 +165,7 @@ struct ProgressReport {
         day >= gridStart && day <= today
     }
 
-    init(sessions: [LoggedSession], scope: ProgressScope, accountCreated: Date? = nil, now: Date = Date()) {
+    init(sessions: [LoggedSession], scope: ProgressScope, accountCreated: Date? = nil, hidden: Set<String> = [], now: Date = Date()) {
         let cal = WeekStore.calendar
         let today = cal.startOfDay(for: now)
         self.scope = scope
@@ -258,28 +261,30 @@ struct ProgressReport {
             ExerciseHistory(name: displayName[key] ?? key, sessions: grouped[key] ?? [])
         }
         self.histories = histories
+        hiddenHistories = histories.filter { hidden.contains($0.id) }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let visible = histories.filter { !hidden.contains($0.id) }
 
-        improving = histories
+        improving = visible
             .compactMap { history -> LiftImprovement? in
                 let ranged = history.sessions(since: start)
                 guard
                     ranged.count >= 2,
                     let latest = ranged.first, let latestTop = latest.top,
                     let firstTop = ranged.last?.top,
-                    latestTop.isImprovement(over: firstTop)
+                    latestTop.score > firstTop.score
                 else { return nil }
-                let spark = ranged.prefix(6).reversed().compactMap(\.top?.effort)
+                let spark = ranged.prefix(6).reversed().compactMap(\.top?.score)
                 return LiftImprovement(history: history, first: firstTop, latest: latestTop, latestDate: latest.date, spark: spark)
             }
             .sorted { $0.size > $1.size }
 
-        lifts = histories.compactMap { history -> LiftRow? in
+        lifts = visible.compactMap { history -> LiftRow? in
             guard let latest = history.latest, latest.date >= start, let top = latest.top else { return nil }
             let trend: LiftTrend
             if history.sessions.count < 2 {
                 trend = .new
             } else if let previous = history.sessions[1].top {
-                trend = top.effort > previous.effort ? .up : top.effort < previous.effort ? .down : .flat
+                trend = top.score > previous.score ? .up : top.score < previous.score ? .down : .flat
             } else {
                 trend = .flat
             }
@@ -324,15 +329,12 @@ struct ProgressReport {
 }
 
 extension LiftSet {
-    /// Weight times reps, with bodyweight counted as 1 lb so reps still count.
-    var effort: Double { (isBodyweight ? 1 : weightLbs) * Double(reps) }
+    /// Estimated one-rep max (Epley): weight × (1 + reps / 30).
+    var e1RM: Double { weightLbs * (1 + Double(reps) / 30) }
 
-    /// More weight at the same or more reps, or more reps at the same or
-    /// more weight. Flat or traded-off sets are not improvements.
-    func isImprovement(over previous: LiftSet) -> Bool {
-        (weightLbs > previous.weightLbs && reps >= previous.reps)
-            || (reps > previous.reps && weightLbs >= previous.weightLbs)
-    }
+    /// How progress is judged everywhere: estimated 1RM, or reps for a
+    /// bodyweight set.
+    var score: Double { isBodyweight ? Double(reps) : e1RM }
 
     /// "185", "92.5", or "BW".
     var weightText: String {
@@ -348,21 +350,33 @@ extension LiftSet {
     /// "185×5", for bar labels.
     var tight: String { "\(weightText)×\(reps)" }
 
-    /// "+5 lbs +1 rep", "-2 reps", or nil when nothing changed.
-    func change(since first: LiftSet) -> String? {
-        var parts: [String] = []
+    /// Change in score since `first`, rounded: lbs of estimated 1RM, or
+    /// reps when both sets are bodyweight.
+    func scoreChange(since first: LiftSet) -> Int {
+        Int((score - first.score).rounded())
+    }
+
+    /// "+12 lbs est.", "-1 rep", or "No change".
+    func scoreChangeText(since first: LiftSet) -> String {
+        let delta = scoreChange(since: first)
+        guard delta != 0 else { return "No change" }
+        let sign = delta > 0 ? "+" : "-"
+        if isBodyweight && first.isBodyweight {
+            return "\(sign)\(abs(delta)) \(abs(delta) == 1 ? "rep" : "reps")"
+        }
+        return "\(sign)\(abs(delta)) lbs est."
+    }
+
+    /// "+10 lbs, -2 reps" when weight and reps moved opposite ways, so the
+    /// trade behind the estimate is visible; nil otherwise.
+    func tradeOff(since first: LiftSet) -> String? {
         let dw = weightLbs - first.weightLbs
-        if dw != 0 {
-            let amount = abs(dw).rounded() == abs(dw)
-                ? String(Int(abs(dw)))
-                : abs(dw).formatted(.number.precision(.fractionLength(1)))
-            parts.append("\(dw > 0 ? "+" : "-")\(amount) lbs")
-        }
         let dr = reps - first.reps
-        if dr != 0 {
-            parts.append("\(dr > 0 ? "+" : "-")\(abs(dr)) \(abs(dr) == 1 ? "rep" : "reps")")
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " ")
+        guard (dw > 0 && dr < 0) || (dw < 0 && dr > 0) else { return nil }
+        let amount = abs(dw).rounded() == abs(dw)
+            ? String(Int(abs(dw)))
+            : abs(dw).formatted(.number.precision(.fractionLength(1)))
+        return "\(dw > 0 ? "+" : "-")\(amount) lbs, \(dr > 0 ? "+" : "-")\(abs(dr)) \(abs(dr) == 1 ? "rep" : "reps")"
     }
 }
 

@@ -71,35 +71,6 @@ struct ExerciseSuggestion: Identifiable, Equatable {
     var id: String { name.exerciseMatchKey }
 }
 
-/// Suggestion chips the user removed. Stored on this device per account;
-/// logging the exercise again brings it back.
-enum HiddenExerciseSuggestions {
-    private static var key: String? {
-        supabase.auth.currentSession.map { "hiddenExerciseSuggestions.\($0.user.id.uuidString)" }
-    }
-
-    static func load() -> Set<String> {
-        guard let key else { return [] }
-        return Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
-    }
-
-    static func hide(_ name: String) {
-        guard let key else { return }
-        var names = load()
-        names.insert(name.exerciseMatchKey)
-        UserDefaults.standard.set(Array(names), forKey: key)
-    }
-
-    static func unhide(_ names: [String]) {
-        guard let key, !names.isEmpty else { return }
-        let current = load()
-        let remaining = current.subtracting(names.map(\.exerciseMatchKey))
-        if remaining != current {
-            UserDefaults.standard.set(Array(remaining), forKey: key)
-        }
-    }
-}
-
 /// What the Log session sheet saves. `id` is nil for a fresh log.
 struct SessionLog {
     var id: UUID?

@@ -21,6 +21,8 @@ struct MainTabView: View {
                 .withSyncedTabBar($tab)
                 .tag(Tab.progress)
         }
+        // Account-level hidden exercises; also moves the old per-device list.
+        .task { await HiddenExercises.shared.load() }
         // A tapped reminder lands on Today, which opens the Log sheet.
         .onChange(of: router.pendingLogFromReminder) { _, pending in
             if pending { tab = .today }

@@ -10,23 +10,28 @@ struct ProgressScreen: View {
     @State private var showAllLifts = false
     @State private var sheet: ProgressSheet?
     @State private var showingProfile = false
+    @State private var deleteTarget: ExerciseHistory?
+    @State private var actionError: String?
+    private var hidden = HiddenExercises.shared
     @Environment(\.scenePhase) private var scenePhase
 
     private enum ProgressSheet: Identifiable {
         case grades
         /// Keyed by exerciseMatchKey.
         case lift(String)
+        case hidden
 
         var id: String {
             switch self {
             case .grades:        return "grades"
             case .lift(let key): return "lift-\(key)"
+            case .hidden:        return "hidden"
             }
         }
     }
 
     private var report: ProgressReport {
-        ProgressReport(sessions: store.sessions, scope: scope, accountCreated: store.accountCreated)
+        ProgressReport(sessions: store.sessions, scope: scope, accountCreated: store.accountCreated, hidden: hidden.keys)
     }
 
     var body: some View {
@@ -91,6 +96,20 @@ struct ProgressScreen: View {
         .sheet(isPresented: $showingProfile) {
             ProfileSheet()
         }
+        .deleteExerciseConfirmation(
+            history: deleteTarget,
+            onCancel: { deleteTarget = nil },
+            onConfirm: {
+                if let target = deleteTarget { delete(target) }
+                deleteTarget = nil
+            }
+        )
+        .alert(
+            actionError ?? "",
+            isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        }
         .sheet(item: $sheet) { sheet in
             sheetContent(sheet)
                 .presentationBackground(SYN.card)
@@ -108,9 +127,17 @@ struct ProgressScreen: View {
                 .presentationDetents([.height(638)])
         case .lift(let key):
             if let history = report.histories.first(where: { $0.id == key }) {
-                LiftHistorySheet(report: report, history: history)
+                LiftHistorySheet(
+                    report: report,
+                    history: history,
+                    onHide: { hide(history) },
+                    onDelete: { delete(history) }
+                )
                     .presentationDetents([.height(756)])
             }
+        case .hidden:
+            HiddenExercisesSheet(histories: report.hiddenHistories, onUnhide: unhide)
+                .presentationDetents([.medium, .large])
         }
     }
 
@@ -445,6 +472,7 @@ struct ProgressScreen: View {
 
     private func liftsSection(_ r: ProgressReport) -> some View {
         let rows = showAllLifts ? r.lifts : Array(r.lifts.prefix(5))
+        let hiddenCount = r.hiddenHistories.count
         return VStack(alignment: .leading, spacing: Spacing.m) {
             eyebrow("Lifts")
             VStack(spacing: 0) {
@@ -454,15 +482,34 @@ struct ProgressScreen: View {
                         .foregroundStyle(SYN.textDim)
                         .padding(.horizontal, Spacing.md)
                         .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-                }
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    liftRow(row)
-                        .overlay(alignment: .top) {
-                            if index > 0 { Rectangle().fill(SYN.border).frame(height: 0.5) }
+                } else {
+                    // A List, sized to its rows and not scrolling, so rows get
+                    // native swipe actions inside the page's ScrollView.
+                    List {
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                            liftRow(row)
+                                .overlay(alignment: .top) {
+                                    if index > 0 { Rectangle().fill(SYN.border).frame(height: 0.5) }
+                                }
+                                .listRowInsets(EdgeInsets())
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(SYN.card)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button("Delete") { deleteTarget = row.history }
+                                        .tint(SYN.red)
+                                    Button("Hide") { hide(row.history) }
+                                        .tint(SYN.textDim)
+                                }
                         }
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .scrollDisabled(true)
+                    .environment(\.defaultMinListRowHeight, 56)
+                    .frame(height: CGFloat(rows.count) * 56)
                 }
                 if r.lifts.count > 5 {
-                    Button {
+                    footerButton {
                         withAnimation(.easeOut(duration: 0.2)) { showAllLifts.toggle() }
                     } label: {
                         HStack(spacing: 5) {
@@ -473,15 +520,71 @@ struct ProgressScreen: View {
                             }
                         }
                         .foregroundStyle(SYN.cyan)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                    .overlay(alignment: .top) { Rectangle().fill(SYN.border).frame(height: 0.5) }
+                }
+                if hiddenCount > 0 {
+                    footerButton {
+                        sheet = .hidden
+                    } label: {
+                        HStack(spacing: Spacing.s) {
+                            Text("Hidden (\(hiddenCount))")
+                                .font(.synText(13, weight: .semibold))
+                                .foregroundStyle(SYN.textDim)
+                            Spacer(minLength: 0)
+                            LineGlyph(kind: .chevron, size: 12)
+                                .foregroundStyle(SYN.textFaint)
+                        }
+                        .padding(.horizontal, Spacing.md)
+                    }
                 }
             }
+            .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
             .progressCard()
+        }
+    }
+
+    /// A 48pt row under the lift rows, with a hairline above.
+    private func footerButton<Label: View>(action: @escaping () -> Void, @ViewBuilder label: () -> Label) -> some View {
+        Button(action: action) {
+            label()
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .top) { Rectangle().fill(SYN.border).frame(height: 0.5) }
+    }
+
+    // MARK: - Hide and delete
+
+    private func hide(_ history: ExerciseHistory) {
+        Task {
+            do {
+                try await hidden.hide(history.name)
+            } catch {
+                actionError = "Couldn't hide \(history.name). Try again."
+            }
+        }
+    }
+
+    private func unhide(_ history: ExerciseHistory) {
+        Task {
+            do {
+                try await hidden.unhide([history.name])
+            } catch {
+                actionError = "Couldn't unhide \(history.name). Try again."
+            }
+        }
+    }
+
+    private func delete(_ history: ExerciseHistory) {
+        Task {
+            do {
+                try await store.deleteExercise(matchKey: history.id)
+            } catch {
+                actionError = "Couldn't delete \(history.name) history. Try again."
+                await store.load()
+            }
         }
     }
 
