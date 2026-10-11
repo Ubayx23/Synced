@@ -24,7 +24,7 @@ Synced is an iOS training planner for climbers who also do supporting strength w
 1. **Welcome**: signed-out entry with Create account and I already have an account.
 2. **Sign up / Sign in**: email and password, with a password requirements checklist on Sign up and Forgot password? on Sign in.
 3. **Today** (first tab): today's session with a one-tap Log button, a swipeable Monday to Sunday strip (tap a day to plan or open it), Recovery and Last cards, Tomorrow, the last note, and this week's totals.
-4. **Progress** (second tab): Climbing (top grade this month, grade pyramid, first-at-grade milestones), Lifts Improving, and Recent Lifts with per-exercise history.
+4. **Progress** (second tab): a 4W / 12W / ALL toggle, top grade this month with a weekly grade line, Improving lifts, a Consistency grid, and Lifts, with Grade breakdown and Lift history sheets.
 5. **Recovery** (sheet from Today's Recovery card): front and back anatomy map; muscles glow cyan when ready and turn gray when recently worked, from logged lifts and climbs over the last 14 days.
 6. **Sheets**: Plan session, Log session (adapts to climb, lift, or rest), and Profile (daily reminder toggle and time, and sign out).
 
@@ -68,7 +68,7 @@ Synced/
                            ExercisesEditor, WeekView (no longer a tab)
     Recovery/              RecoveryView, RecoveryStore, Muscles,
                            ExerciseCatalog, BodyModel
-    Progress/              ProgressScreen, ProgressStore, MiniBarChart
+    Progress/              ProgressScreen, ProgressStore, ProgressReport, ProgressCharts, ProgressSheets
     Profile/               ProfileSheet
     Reminders/             ReminderScheduler
   State/                   SessionStore (auth state)

@@ -38,6 +38,10 @@ enum SYN {
     static let tabBar      = Color(hex: 0x111113)
     /// Logged rest day indicator in the Today strip.
     static let restDot     = Color(hex: 0x3A3A3E)
+    /// Neutral chart bars on Progress (grade rows, older lift sessions).
+    static let barNeutral  = Color(hex: 0x2C2C30)
+    /// Chart tooltip fill on Progress.
+    static let tooltip     = Color(hex: 0x26262A)
 
     // Recovery anatomy: one hue, brightness carries state. Cyan means ready,
     // dimmer cyan means recovering, gray means just worked.

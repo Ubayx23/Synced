@@ -46,9 +46,9 @@ SelectableCard on the Plan sheet uses a white selected stroke; to be
 unified in a future pass.
 
 Green (SYN.green) is reserved for Progress delta indicators showing
-positive change (paired with amber for regression). These three usages
-are sanctioned: ProgressScreen's `monthComparison` (+N grades from last
-month) and the delta line on `ImprovementCard`, and the dormant success
+positive change (paired with amber for regression). Sanctioned usages:
+the Progress hero month pill (+N from last month), the up arrow on Lifts
+rows, the change stat on the Lift history sheet, and the dormant success
 checkmark in SpecInput (no caller passes `isValid`). No other green
 anywhere.
 
@@ -58,7 +58,9 @@ Screens:
 2. Sign up / Sign in (pushed from Welcome)
 3. Today (tab 1): today's session, a swipeable Monday to Sunday day strip,
    Recovery and Last cards, Tomorrow, Last Note, and This Week totals
-4. Progress (tab 2): Climbing, Lifts Improving, Recent Lifts
+4. Progress (tab 2): 4W / 12W / ALL toggle, top grade hero with the weekly
+   grade line, Improving, Consistency, Lifts, plus Grade breakdown and Lift
+   history sheets
 5. Recovery: anatomy view with muscles colored by recent training load,
    opened as a modal sheet from Today's Recovery card (not a tab)
 6. Plan session sheet, Log session sheet, Profile sheet (daily reminder
@@ -196,20 +198,28 @@ Main app (Features/):
   CursorEndField, a UIKit UITextField bridge that keeps the cursor at the
   end on focus for the numeric set fields. WeekView is no longer mounted
   as a tab; the Plan and Log sheets and WeekStore are shared with Today.
-- Progress/: ProgressScreen, ProgressStore (one fetch, all aggregation
-  client side in ProgressReport), and MiniBarChart (recent top sets;
-  reps instead of weight for bodyweight exercises). Three sections:
-  - Climbing: highest grade this calendar month against last month (+N
-    green, same or none dim, down amber), the grade pyramid across all
-    time, and up to five most recent first-at-grade milestones.
-  - Improving: exercises whose latest top set beat the previous
-    session's. Top set is max weight times reps, ties to the heavier set,
+- Progress/: ProgressScreen, ProgressStore (one fetch of logged
+  sessions), ProgressReport (all aggregation, client side, per scope),
+  ProgressCharts (GradeLineChart, ConsistencyGrid, Sparkline, drawn with
+  Canvas and Path), and ProgressSheets (GradeBreakdownSheet,
+  LiftHistorySheet). Follows the "Progress v1" Claude Design mockup.
+  - Scope: 4W, 12W (default), or ALL (weeks since the first session, at
+    least 4), whole Monday-start weeks ending this week. Rescopes
+    everything except the hero number.
+  - Hero: highest grade this calendar month, with a pill against last
+    month (+N green, same dim, -N amber, "First month logged"). Grade line:
+    max grade per week in scope; weeks without a send break the line.
+    Dashed line at the all-time best, labeled in a right gutter. Dots on
+    new all-time bests, tooltip on tap. Under 3 climbing weeks shows the
+    empty state.
+  - Improving: latest top set in scope against the first top set in
+    scope. Top set is max weight times reps, ties to the heavier set,
     bodyweight compared by reps. Improving means more weight at the same
-    or more reps, or more reps at the same or more weight. Flat,
-    declining, traded-off, and single-session exercises are hidden.
-    Biggest improvement first.
-  - Recent Lifts: every exercise ever logged, most recent first, each
-    opening a history sheet with every set per session.
+    or more reps, or more reps at the same or more weight.
+  - Consistency: a cell per day (climb filled, lift outlined, rest gray).
+  - Lifts: exercises logged in scope, most recent first, trend arrow
+    against the previous session by weight times reps. Five, then Show
+    all.
 - Recovery/: RecoveryView (MuscleMap front and back anatomy; ready muscles
   glow cyan, worked ones turn gray; tap a muscle for a label),
   RecoveryStore (days since each of 18 TrainedMuscles was trained, last 14
@@ -229,7 +239,7 @@ Shared helpers:
   compared (Progress, suggestions, hidden chips). Stored names are never
   rewritten; display casing comes from the first time a name was logged.
 - `Date.relativeDayLabel` ("Today", "Yesterday", "3 days ago", "Oct 1")
-  and `Date.shortDayLabel` ("Oct 3").
+  and `Date.shortDayLabel` ("Oct 3", in ProgressReport.swift).
 
 Shared UI to reuse:
 - Components/: ScreenShell, ProgressHeader, PrimaryButton, SecondaryButton,
