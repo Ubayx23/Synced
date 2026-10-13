@@ -204,16 +204,38 @@ Main app (Features/):
   profiles.created_at), ProgressReport (all aggregation, client side, per scope),
   ProgressCharts (GradeLineChart, ConsistencyGrid, Sparkline, drawn with
   Canvas and Path), and ProgressSheets (GradeBreakdownSheet,
-  LiftHistorySheet, HiddenExercisesSheet). Follows the "Progress v1"
+  LiftHistorySheet, RenameExerciseSheet, EditSessionExerciseSheet,
+  HiddenExercisesSheet). Follows the "Progress v1"
   Claude Design mockup.
   - Lift history sheet: up to 8 bars at a fixed 28pt width and 12pt
-    spacing, left aligned, heights scaled from 70% of the lowest e1RM in
-    view (tallest 92pt), "≈198" e1RM under each date. Change stat is the
-    e1RM difference ("+12 lbs est.", green up, amber down, dim "No
-    change"), with a dim "+10 lbs, -2 reps" line when weight and reps
-    moved opposite ways.
-  - Hide and delete: swipe a Lifts row, or the "..." menu on the lift
-    history sheet. Hide adds the exerciseMatchKey to
+    spacing, left aligned. Heights scale from zero: 92pt times score over
+    the highest score in view, 8pt minimum, so a 5% gap looks like 5%
+    (score is e1RM, or reps for bodyweight). Real set on top of each bar,
+    "≈198" e1RM under each date. A small cyan "PR" tag sits above the
+    label when the session's top set is heavier than every earlier set of
+    that exercise (any reps; never on the first session or bodyweight).
+    Change stat is the e1RM difference ("+12 lbs est.", green up, amber
+    down, dim "No change"), with a dim "+10 lbs, -2 reps" line when
+    weight and reps moved opposite ways. The "..." button in the header
+    (32pt surfaceHi circle in a 44pt target) offers Edit name, Hide, and
+    Delete.
+  - Lifts rows: swipe for Hide and Delete, or long press for a context
+    menu with Edit name, Hide, and Delete. The rows are a List sized to
+    its rows with `.scrollBounceBehavior(.basedOnSize)`, not
+    `.scrollDisabled`, which broke swipes. The context menu is the
+    reliable path.
+  - Rename (RenameExerciseSheet): Edit name rewrites `name` on every
+    matching lift_exercises entry across all of the user's sessions
+    (ProgressStore.renameExercise, matched by exerciseMatchKey). A name
+    whose key belongs to another exercise asks "Merge into <name>?" and
+    the histories merge. The hidden state moves to the new key.
+  - Single-session edit (EditSessionExerciseSheet): tap a session row on
+    the lift history sheet to edit that session's sets with
+    ExercisesEditor in `setsOnly` mode, or "Remove from this session",
+    which drops only that entry and never the session row
+    (ProgressStore.editExercise). Every edit reloads ProgressStore.
+  - Hide and delete: from the Lifts row swipe or context menu, or the
+    "..." menu on the lift history sheet. Hide adds the exerciseMatchKey to
     profiles.hidden_exercises (HiddenExercises in Week/, shared with the
     Log sheet's suggestion chips); hidden exercises leave Improving, Lifts,
     and suggestions, keep their history, and are listed under "Hidden (N)"
@@ -266,8 +288,8 @@ Main app (Features/):
 Shared helpers:
 - `String.exerciseMatchKey` (ProgressStore.swift): trimmed, lowercased
   exercise name. Use it everywhere exercises are grouped, matched, or
-  compared (Progress, suggestions, hidden chips). Stored names are never
-  rewritten; display casing comes from the first time a name was logged.
+  compared (Progress, suggestions, hidden chips). Stored names are only
+  rewritten by an explicit rename; display casing comes from the first time a name was logged.
 - `Date.relativeDayLabel` ("Today", "Yesterday", "3 days ago", "Oct 1")
   and `Date.shortDayLabel` ("Oct 3", in ProgressReport.swift).
 

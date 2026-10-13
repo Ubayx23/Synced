@@ -5,6 +5,7 @@ private struct SheetHeader<Accessory: View>: View {
     let title: String
     let subtitle: String
     let onDone: () -> Void
+    var doneTitle = "Done"
     @ViewBuilder var accessory: () -> Accessory
 
     var body: some View {
@@ -21,7 +22,7 @@ private struct SheetHeader<Accessory: View>: View {
                     .lineLimit(1)
                 Spacer(minLength: Spacing.m)
                 accessory()
-                Button("Done", action: onDone)
+                Button(doneTitle, action: onDone)
                     .font(.synText(15, weight: .semibold))
                     .foregroundStyle(SYN.cyan)
                     .buttonStyle(.plain)
@@ -170,10 +171,17 @@ struct GradeBreakdownSheet: View {
 struct LiftHistorySheet: View {
     let report: ProgressReport
     let history: ExerciseHistory
+    /// Every exercise, for spotting a rename that merges into another.
+    let allHistories: [ExerciseHistory]
     let onHide: () -> Void
     let onDelete: () -> Void
+    let onRename: (String) async throws -> Void
+    /// New sets for one session, or nil to remove the exercise from it.
+    let onEditSession: (ExerciseSessionSets, [LiftSet]?) async throws -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var confirmingDelete = false
+    @State private var renaming = false
+    @State private var editing: ExerciseSessionSets?
 
     /// Sessions in range, newest first; the latest one when none are.
     private var sessions: [ExerciseSessionSets] {
@@ -190,6 +198,9 @@ struct LiftHistorySheet: View {
                     onDone: { dismiss() }
                 ) {
                     Menu {
+                        Button("Edit name", systemImage: "pencil") {
+                            renaming = true
+                        }
                         Button("Hide", systemImage: "eye.slash") {
                             onHide()
                             dismiss()
@@ -200,11 +211,13 @@ struct LiftHistorySheet: View {
                     } label: {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(SYN.textDim)
+                            .foregroundStyle(SYN.text)
+                            .frame(width: 32, height: 32)
+                            .background(Circle().fill(SYN.surfaceHi))
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
-                    .accessibilityLabel("More")
+                    .accessibilityLabel("Edit, hide, or delete")
                 }
 
                 StatRow(stats: stats, size: 18)
@@ -225,7 +238,9 @@ struct LiftHistorySheet: View {
 
                 VStack(spacing: 0) {
                     ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
-                        sessionRow(session)
+                        Button { editing = session } label: { sessionRow(session) }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Edit this session's sets")
                             .overlay(alignment: .top) {
                                 if index > 0 { Rectangle().fill(SYN.border).frame(height: 0.5) }
                             }
@@ -245,6 +260,16 @@ struct LiftHistorySheet: View {
                 dismiss()
             }
         )
+        .sheet(isPresented: $renaming) {
+            RenameExerciseSheet(history: history, allHistories: allHistories, onSave: onRename)
+                .progressSubsheet(height: 330)
+        }
+        .sheet(item: $editing) { session in
+            EditSessionExerciseSheet(name: history.name, session: session) { sets in
+                try await onEditSession(session, sets)
+            }
+            .progressSubsheet(height: nil)
+        }
     }
 
     private var stats: [StatRow.Stat] {
@@ -269,29 +294,36 @@ struct LiftHistorySheet: View {
     }
 
     /// Up to eight most recent sessions in range, oldest on the left, at a
-    /// fixed width so a few sessions don't stretch. Heights scale from 70%
-    /// of the lowest score in view, so small gains look small; the highest
-    /// bar is 92pt. Labels show the real set, with the estimate under the
-    /// date.
+    /// fixed width so a few sessions don't stretch. Heights scale from zero
+    /// against the highest score in view (92pt), with an 8pt floor, so a 5%
+    /// difference looks like 5%. Score is estimated 1RM, or reps for
+    /// bodyweight. Labels show the real set, with the estimate under the
+    /// date; a cyan PR tag marks a top set heavier than any earlier set.
     private var bars: some View {
         let shown = Array(sessions.prefix(8).reversed())
-        let scores = shown.compactMap(\.top?.score)
-        let high = scores.max() ?? 0
-        let base = (scores.min() ?? 0) * 0.7
+        let high = shown.compactMap(\.top?.score).max() ?? 0
+        let prs = weightPRs
         return VStack(alignment: .leading, spacing: Spacing.m) {
             HStack(alignment: .bottom, spacing: 12) {
                 ForEach(Array(shown.enumerated()), id: \.element.id) { index, session in
                     let isLatest = index == shown.count - 1
-                    let score = session.top?.score ?? base
-                    let height = high > base ? 92 * (score - base) / (high - base) : 92
+                    let score = session.top?.score ?? 0
+                    let height = high > 0 ? 92 * score / high : 92
                     VStack(spacing: 6) {
+                        if prs.contains(session.id) {
+                            Text("PR")
+                                .font(.synMono(9, weight: .semibold))
+                                .foregroundStyle(SYN.cyan)
+                                .fixedSize()
+                                .accessibilityLabel("Weight PR")
+                        }
                         Text(session.top?.tight ?? "")
                             .font(.synMono(9.5, weight: .medium))
                             .foregroundStyle(isLatest ? SYN.cyan : SYN.textDim)
                             .fixedSize()
                         RoundedRectangle(cornerRadius: 5, style: .continuous)
                             .fill(isLatest ? SYN.cyan : SYN.barNeutral)
-                            .frame(width: 28, height: max(4, height))
+                            .frame(width: 28, height: max(8, height))
                         VStack(spacing: 3) {
                             Text(session.date.formatted(.dateTime.month(.defaultDigits).day()))
                                 .font(.synMono(9.5))
@@ -316,6 +348,22 @@ struct LiftHistorySheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// Sessions whose top set is heavier than every set logged before it,
+    /// across all of this exercise's history. The first session has
+    /// nothing to beat, and bodyweight sets never count.
+    private var weightPRs: Set<UUID> {
+        var heaviest: Double?
+        var ids: Set<UUID> = []
+        for session in history.sessions.reversed() {
+            if let top = session.top, !top.isBodyweight, let heaviest, top.weightLbs > heaviest {
+                ids.insert(session.id)
+            }
+            let sessionMax = session.sets.map(\.weightLbs).max() ?? 0
+            heaviest = max(heaviest ?? 0, sessionMax)
+        }
+        return ids
+    }
+
     /// Date, then the top set in text color and the other sets dimmed.
     private func sessionRow(_ session: ExerciseSessionSets) -> some View {
         let sets = session.topFirst
@@ -330,8 +378,203 @@ struct LiftHistorySheet: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             Spacer(minLength: 0)
+            LineGlyph(kind: .chevron, size: 12)
+                .foregroundStyle(SYN.textFaint)
         }
         .frame(height: 46)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Edit name
+
+/// Renames an exercise on every session. A name that matches another
+/// exercise merges the two after a confirmation.
+struct RenameExerciseSheet: View {
+    let history: ExerciseHistory
+    let allHistories: [ExerciseHistory]
+    let onSave: (String) async throws -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String
+    @State private var saving = false
+    @State private var mergeTarget: ExerciseHistory?
+    @State private var failed = false
+
+    init(history: ExerciseHistory, allHistories: [ExerciseHistory], onSave: @escaping (String) async throws -> Void) {
+        self.history = history
+        self.allHistories = allHistories
+        self.onSave = onSave
+        _name = State(initialValue: history.name)
+    }
+
+    private var trimmed: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SheetHeader(
+                title: "Edit name",
+                subtitle: "Renames it on every session.",
+                onDone: { dismiss() },
+                doneTitle: "Cancel"
+            ) { EmptyView() }
+
+            SpecInput(value: $name, placeholder: "Exercise name", autocap: .sentences, autoFocus: true)
+                .padding(.horizontal, Spacing.l)
+                .padding(.top, Spacing.l)
+
+            if failed {
+                Text("Couldn't save. Try again.")
+                    .font(.synText(13))
+                    .foregroundStyle(SYN.red)
+                    .padding(.horizontal, Spacing.l)
+                    .padding(.top, Spacing.s)
+            }
+
+            PrimaryButton(title: "Save", disabled: trimmed.isEmpty || trimmed == history.name || saving) {
+                if let target = allHistories.first(where: { $0.id == trimmed.exerciseMatchKey && $0.id != history.id }) {
+                    mergeTarget = target
+                } else {
+                    save()
+                }
+            }
+            .padding(.horizontal, Spacing.l)
+            .padding(.top, Spacing.l)
+
+            Spacer(minLength: 0)
+        }
+        .confirmationDialog(
+            mergeTarget.map { "Merge into \($0.name)?" } ?? "",
+            isPresented: Binding(get: { mergeTarget != nil }, set: { if !$0 { mergeTarget = nil } }),
+            titleVisibility: .visible,
+            presenting: mergeTarget
+        ) { _ in
+            Button("Merge") { save() }
+            Button("Cancel", role: .cancel) { mergeTarget = nil }
+        } message: { target in
+            Text("\(history.name) and \(target.name) become one exercise with both histories. This can't be undone.")
+        }
+    }
+
+    private func save() {
+        saving = true
+        failed = false
+        Task {
+            do {
+                try await onSave(trimmed)
+                dismiss()
+            } catch {
+                failed = true
+            }
+            saving = false
+        }
+    }
+}
+
+// MARK: - Edit one session
+
+/// Edits one exercise's sets on one session, or removes the exercise from
+/// that session. The session itself is never deleted.
+struct EditSessionExerciseSheet: View {
+    let name: String
+    let session: ExerciseSessionSets
+    /// New sets, or nil to remove the exercise from the session.
+    let onSave: ([LiftSet]?) async throws -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var drafts: [ExerciseDraft]
+    @State private var saving = false
+    @State private var confirmingRemove = false
+    @State private var failed = false
+
+    init(name: String, session: ExerciseSessionSets, onSave: @escaping ([LiftSet]?) async throws -> Void) {
+        self.name = name
+        self.session = session
+        self.onSave = onSave
+        var draft = ExerciseDraft()
+        draft.name = name
+        draft.sets = session.sets.isEmpty ? [SetDraft()] : session.sets.map(SetDraft.init)
+        _drafts = State(initialValue: [draft])
+    }
+
+    private var sets: [LiftSet] { drafts.first?.sets.compactMap(\.value) ?? [] }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    SheetHeader(
+                        title: name,
+                        subtitle: "\(session.date.shortDayLabel) · lbs",
+                        onDone: { dismiss() },
+                        doneTitle: "Cancel"
+                    ) { EmptyView() }
+
+                    ExercisesEditor(exercises: $drafts, scrollProxy: proxy, setsOnly: true)
+                        .padding(.horizontal, Spacing.l)
+                        .padding(.top, Spacing.l)
+
+                    if failed {
+                        Text("Couldn't save. Try again.")
+                            .font(.synText(13))
+                            .foregroundStyle(SYN.red)
+                            .padding(.horizontal, Spacing.l)
+                            .padding(.top, Spacing.m)
+                    }
+
+                    PrimaryButton(title: "Save", disabled: sets.isEmpty || saving) {
+                        save(sets)
+                    }
+                    .padding(.horizontal, Spacing.l)
+                    .padding(.top, Spacing.l)
+
+                    Button("Remove from this session") { confirmingRemove = true }
+                        .font(.synText(15, weight: .medium))
+                        .foregroundStyle(SYN.red)
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .disabled(saving)
+                        .padding(.top, Spacing.s)
+                }
+                .padding(.bottom, 34)
+            }
+            .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.interactively)
+        }
+        .confirmationDialog(
+            "Remove \(name) from this session?",
+            isPresented: $confirmingRemove,
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) { save(nil) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The session stays. Only this exercise is removed from it.")
+        }
+    }
+
+    private func save(_ sets: [LiftSet]?) {
+        saving = true
+        failed = false
+        Task {
+            do {
+                try await onSave(sets)
+                dismiss()
+            } catch {
+                failed = true
+            }
+            saving = false
+        }
+    }
+}
+
+extension View {
+    /// Presentation shared by the Progress sheets: card fill, 24pt corners,
+    /// no system grabber. A nil height opens at the large detent.
+    func progressSubsheet(height: CGFloat?) -> some View {
+        self
+            .presentationDetents(height.map { [.height($0)] } ?? [.large])
+            .presentationBackground(SYN.card)
+            .presentationCornerRadius(24)
+            .presentationDragIndicator(.hidden)
     }
 }
 

@@ -59,6 +59,19 @@ final class HiddenExercises {
         try await save(next)
     }
 
+    /// After a rename: the new key takes the old key's hidden state, and
+    /// the old key is dropped.
+    func move(_ oldKey: String, to newKey: String) async throws {
+        var next = keys.subtracting([oldKey])
+        if keys.contains(oldKey) {
+            next.insert(newKey)
+        } else {
+            next.remove(newKey)
+        }
+        guard next != keys else { return }
+        try await save(next)
+    }
+
     /// Updates at once and rolls back if the write fails.
     private func save(_ next: Set<String>) async throws {
         let userID = try await supabase.auth.session.user.id

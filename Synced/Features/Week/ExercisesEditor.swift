@@ -191,6 +191,9 @@ struct ExercisesEditor: View {
     /// Scrolls the enclosing sheet so a newly focused field stays visible
     /// above the keyboard. Nil when the editor isn't inside a ScrollViewReader.
     var scrollProxy: ScrollViewProxy?
+    /// Only the set rows and Add set, for editing one logged exercise from
+    /// Progress: no hint, suggestions, name, or exercise controls.
+    var setsOnly = false
 
     static let maxSuggestions = 6
     static let maxExercises = 8
@@ -235,12 +238,14 @@ struct ExercisesEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.m) {
-            Text("Track weight and reps to see progression on the Progress tab.")
-                .font(.synText(13))
-                .foregroundStyle(SYN.textFaint)
-                .fixedSize(horizontal: false, vertical: true)
+            if !setsOnly {
+                Text("Track weight and reps to see progression on the Progress tab.")
+                    .font(.synText(13))
+                    .foregroundStyle(SYN.textFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-            if !availableSuggestions.isEmpty {
+            if !setsOnly, !availableSuggestions.isEmpty {
                 suggestionRow
                     .transition(.opacity)
             }
@@ -252,7 +257,9 @@ struct ExercisesEditor: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
-            addExerciseButton
+            if !setsOnly {
+                addExerciseButton
+            }
         }
         .animation(structural, value: suggestions)
         .animation(structural, value: exercises.map(\.id))
@@ -270,25 +277,8 @@ struct ExercisesEditor: View {
         let setCount = exercise.wrappedValue.sets.count
 
         return VStack(alignment: .leading, spacing: Spacing.m) {
-            HStack(spacing: Spacing.s) {
-                TextField(
-                    "",
-                    text: exercise.name,
-                    prompt: Text("Exercise, e.g. Bench press").foregroundColor(SYN.textFaint)
-                )
-                .font(.synText(16, weight: .semibold))
-                .foregroundStyle(SYN.text)
-                .textInputAutocapitalization(.sentences)
-                .submitLabel(.next)
-                .focused($nameFocus, equals: id)
-                .id(Field.name(id))
-                .onSubmit {
-                    if let first = exercise.wrappedValue.sets.first { focus = .weight(first.id) }
-                }
-
-                removeButton(label: "Remove exercise") {
-                    withAnimation(structural) { exercises.removeAll { $0.id == id } }
-                }
+            if !setsOnly {
+                nameRow(id: id, exercise: exercise)
             }
 
             // Only needed when the session covers more than one group.
@@ -306,27 +296,7 @@ struct ExercisesEditor: View {
                 }
             }
 
-            HStack(spacing: Spacing.s) {
-                Button {
-                    let set = SetDraft(copying: exercise.wrappedValue.sets.last)
-                    withAnimation(structural) { exercise.wrappedValue.sets.append(set) }
-                    focus = .weight(set.id)
-                } label: {
-                    Label("Add set", systemImage: "plus")
-                        .font(.synText(13, weight: .semibold))
-                        .foregroundStyle(setCount >= Self.maxSets ? SYN.textFaint : SYN.textDim)
-                        .frame(height: 32)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(setCount >= Self.maxSets)
-
-                if setCount >= Self.maxSets {
-                    Text("Max \(Self.maxSets) sets")
-                        .font(.synText(12))
-                        .foregroundStyle(SYN.textFaint)
-                }
-            }
+            addSetRow(exercise: exercise, setCount: setCount)
         }
         .padding(Spacing.md)
         .background(
@@ -337,6 +307,53 @@ struct ExercisesEditor: View {
             RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                 .stroke(SYN.border, lineWidth: 1)
         )
+    }
+
+    private func nameRow(id: UUID, exercise: Binding<ExerciseDraft>) -> some View {
+        HStack(spacing: Spacing.s) {
+            TextField(
+                "",
+                text: exercise.name,
+                prompt: Text("Exercise, e.g. Bench press").foregroundColor(SYN.textFaint)
+            )
+            .font(.synText(16, weight: .semibold))
+            .foregroundStyle(SYN.text)
+            .textInputAutocapitalization(.sentences)
+            .submitLabel(.next)
+            .focused($nameFocus, equals: id)
+            .id(Field.name(id))
+            .onSubmit {
+                if let first = exercise.wrappedValue.sets.first { focus = .weight(first.id) }
+            }
+
+            removeButton(label: "Remove exercise") {
+                withAnimation(structural) { exercises.removeAll { $0.id == id } }
+            }
+        }
+    }
+
+    private func addSetRow(exercise: Binding<ExerciseDraft>, setCount: Int) -> some View {
+        HStack(spacing: Spacing.s) {
+            Button {
+                let set = SetDraft(copying: exercise.wrappedValue.sets.last)
+                withAnimation(structural) { exercise.wrappedValue.sets.append(set) }
+                focus = .weight(set.id)
+            } label: {
+                Label("Add set", systemImage: "plus")
+                    .font(.synText(13, weight: .semibold))
+                    .foregroundStyle(setCount >= Self.maxSets ? SYN.textFaint : SYN.textDim)
+                    .frame(height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(setCount >= Self.maxSets)
+
+            if setCount >= Self.maxSets {
+                Text("Max \(Self.maxSets) sets")
+                    .font(.synText(12))
+                    .foregroundStyle(SYN.textFaint)
+            }
+        }
     }
 
     /// Which selected group this exercise counts for, so it is suggested
