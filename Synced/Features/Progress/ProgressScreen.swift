@@ -17,15 +17,18 @@ struct ProgressScreen: View {
 
     private enum ProgressSheet: Identifiable {
         case grades
-        /// Keyed by exerciseMatchKey.
+        /// Keyed by exerciseMatchKey. One id for every key, so a rename
+        /// inside the sheet swaps its key without closing it.
         case lift(String)
+        case rename(String)
         case hidden
 
         var id: String {
             switch self {
-            case .grades:        return "grades"
-            case .lift(let key): return "lift-\(key)"
-            case .hidden:        return "hidden"
+            case .grades:          return "grades"
+            case .lift:            return "lift"
+            case .rename(let key): return "rename-\(key)"
+            case .hidden:          return "hidden"
             }
         }
     }
@@ -130,10 +133,29 @@ struct ProgressScreen: View {
                 LiftHistorySheet(
                     report: report,
                     history: history,
+                    allHistories: report.histories,
                     onHide: { hide(history) },
-                    onDelete: { delete(history) }
+                    onDelete: { delete(history) },
+                    onRename: { name in
+                        try await store.renameExercise(matchKey: history.id, to: name)
+                        self.sheet = .lift(name.exerciseMatchKey)
+                    },
+                    onEditSession: { session, sets in
+                        try await store.editExercise(matchKey: history.id, sessionID: session.id, sets: sets)
+                        // Removing its only session leaves nothing to show.
+                        if !self.report.histories.contains(where: { $0.id == history.id }) {
+                            self.sheet = nil
+                        }
+                    }
                 )
                     .presentationDetents([.height(756)])
+            }
+        case .rename(let key):
+            if let history = report.histories.first(where: { $0.id == key }) {
+                RenameExerciseSheet(history: history, allHistories: report.histories) { name in
+                    try await store.renameExercise(matchKey: history.id, to: name)
+                }
+                .presentationDetents([.height(330)])
             }
         case .hidden:
             HiddenExercisesSheet(histories: report.hiddenHistories, onUnhide: unhide)
@@ -483,8 +505,13 @@ struct ProgressScreen: View {
                         .padding(.horizontal, Spacing.md)
                         .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
                 } else {
-                    // A List, sized to its rows and not scrolling, so rows get
-                    // native swipe actions inside the page's ScrollView.
+                    // A List, sized to its rows, so rows get native swipe
+                    // actions inside the page's ScrollView. Not
+                    // .scrollDisabled: that also switches off the List's own
+                    // gesture handling, which made swipes unreliable. With
+                    // bounce based on size, a List that fits its rows never
+                    // scrolls, and vertical drags pass to the page. The
+                    // context menu is the path that always works.
                     List {
                         ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                             liftRow(row)
@@ -500,11 +527,18 @@ struct ProgressScreen: View {
                                     Button("Hide") { hide(row.history) }
                                         .tint(SYN.textDim)
                                 }
+                                .contextMenu {
+                                    Button("Edit name", systemImage: "pencil") { sheet = .rename(row.id) }
+                                    Button("Hide", systemImage: "eye.slash") { hide(row.history) }
+                                    Button("Delete", systemImage: "trash", role: .destructive) {
+                                        deleteTarget = row.history
+                                    }
+                                }
                         }
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
-                    .scrollDisabled(true)
+                    .scrollBounceBehavior(.basedOnSize)
                     .environment(\.defaultMinListRowHeight, 56)
                     .frame(height: CGFloat(rows.count) * 56)
                 }

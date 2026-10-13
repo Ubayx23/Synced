@@ -16,9 +16,16 @@ struct LoggedSession: Identifiable, Equatable {
 extension String {
     /// Canonical key for matching exercise names: trimmed and lowercased, so
     /// "Curls", "CURLS", and "curls " are one exercise. Stored names are
-    /// never rewritten; this only affects grouping, matching, and suggestions.
+    /// only rewritten by an explicit rename (ProgressStore.renameExercise).
     var exerciseMatchKey: String {
         trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
+private extension AnyJSON {
+    /// The match key of a raw lift_exercises entry; nil without a name.
+    var exerciseMatchKey: String? {
+        objectValue?["name"]?.stringValue?.exerciseMatchKey
     }
 }
 
@@ -97,33 +104,88 @@ final class ProgressStore {
     /// the key, since nothing is left to hide, and reloads.
     @MainActor
     func deleteExercise(matchKey: String) async throws {
+        try await rewriteLiftExercises { list in
+            list.filter { $0.exerciseMatchKey != matchKey }
+        }
+        try? await HiddenExercises.shared.unhide([matchKey])
+        await load()
+    }
+
+    /// Writes `newName` on every entry matching `matchKey`, on all of the
+    /// user's sessions. When the new name's key belongs to another exercise,
+    /// the histories merge under it. The hidden state moves with the name.
+    @MainActor
+    func renameExercise(matchKey: String, to newName: String) async throws {
+        let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        try await rewriteLiftExercises { list in
+            list.map { entry in
+                guard entry.exerciseMatchKey == matchKey, var object = entry.objectValue else { return entry }
+                object["name"] = .string(name)
+                return .object(object)
+            }
+        }
+        try? await HiddenExercises.shared.move(matchKey, to: name.exerciseMatchKey)
+        await load()
+    }
+
+    /// Replaces one session's sets for `matchKey`, or removes the exercise
+    /// from that session when `sets` is nil. Only that session's
+    /// lift_exercises is written; the session row itself always stays. An
+    /// exercise listed twice in the session is collapsed into its first
+    /// entry, since Progress shows them as one.
+    @MainActor
+    func editExercise(matchKey: String, sessionID: UUID, sets: [LiftSet]?) async throws {
+        let setsJSON: AnyJSON? = sets.map { sets in
+            .array(sets.map { .object(["weight_lbs": .double($0.weightLbs), "reps": .integer($0.reps)]) })
+        }
+        try await rewriteLiftExercises(sessionID: sessionID) { list in
+            var replaced = false
+            return list.compactMap { entry in
+                guard entry.exerciseMatchKey == matchKey else { return entry }
+                guard let setsJSON, !replaced, var object = entry.objectValue else { return nil }
+                replaced = true
+                object["sets"] = setsJSON
+                return .object(object)
+            }
+        }
+        await load()
+    }
+
+    /// Reads lift_exercises on the user's sessions (or one session), passes
+    /// each list through `transform`, and writes back only the rows that
+    /// changed. Entries stay raw JSON, so fields this code doesn't know
+    /// about are written back untouched.
+    @MainActor
+    private func rewriteLiftExercises(
+        sessionID: UUID? = nil,
+        _ transform: ([AnyJSON]) -> [AnyJSON]
+    ) async throws {
         let userID = try await supabase.auth.session.user.id
         struct Row: Decodable {
             let id: UUID
             let lift_exercises: [AnyJSON]?
         }
-        let rows: [Row] = try await supabase
+        var query = supabase
             .from("sessions")
             .select("id, lift_exercises")
             .eq("user_id", value: userID.uuidString)
             .not("lift_exercises", operator: .is, value: "null")
-            .execute()
-            .value
+        if let sessionID {
+            query = query.eq("id", value: sessionID.uuidString)
+        }
+        let rows: [Row] = try await query.execute().value
         for row in rows {
             guard let list = row.lift_exercises else { continue }
-            let kept = list.filter { entry in
-                entry.objectValue?["name"]?.stringValue?.exerciseMatchKey != matchKey
-            }
-            guard kept.count != list.count else { continue }
+            let next = transform(list)
+            guard next != list else { continue }
             try await supabase
                 .from("sessions")
-                .update(["lift_exercises": AnyJSON.array(kept)])
+                .update(["lift_exercises": AnyJSON.array(next)])
                 .eq("id", value: row.id.uuidString)
                 .eq("user_id", value: userID.uuidString)
                 .execute()
         }
-        try? await HiddenExercises.shared.unhide([matchKey])
-        await load()
     }
 
     /// profiles.created_at as a local start of day. A failure here only
